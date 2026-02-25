@@ -127,6 +127,17 @@ export class XScraper {
             // Clean up excessive newlines
             markdownContent = markdownContent.replace(/\n{3,}/g, '\n\n').trim();
 
+            // Remove X article UI noise patterns
+            // 1. Upgrade prompt
+            markdownContent = markdownContent.replace(/Want to publish your own Article\?\s*\n+Upgrade to Premium\s*/gi, '');
+            // 2. View count (e.g. "3.1M\n\nViews" or "396K\n\nViews")
+            markdownContent = markdownContent.replace(/[\d,.]+[KMB]?\s*\n+Views\s*/gi, '');
+            // 4. Reply count (e.g. "Read 396 replies")
+            markdownContent = markdownContent.replace(/Read \d+ repl(?:y|ies)\s*/gi, '');
+
+            // Final cleanup after removals
+            markdownContent = markdownContent.replace(/\n{3,}/g, '\n\n').trim();
+
             return {
                 title,
                 markdownContent,
