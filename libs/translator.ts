@@ -1,9 +1,11 @@
 import OpenAI from 'openai';
 
-interface TranslationResult {
+export interface TranslationResult {
     literalTranslation: string;
     refinedTranslation: string;
 }
+
+export type TranslationProgressCallback = (stage: 'literal' | 'refined', content: string) => void;
 
 export class Translator {
     private openai: OpenAI;
@@ -21,12 +23,17 @@ export class Translator {
      * Translates the markdown context into localized Chinese 
      * using a 2-step reflection workflow (Literal -> Refinement)
      */
-    public async translateMarkdown(markdownContent: string): Promise<TranslationResult> {
+    public async translateMarkdown(
+        markdownContent: string,
+        onProgress?: TranslationProgressCallback
+    ): Promise<TranslationResult> {
         console.log(`[Translator] Starting literal translation logic...`);
         const literal = await this.literalTranslate(markdownContent);
+        onProgress?.('literal', literal);
 
         console.log(`[Translator] Starting refinement and formatting logic...`);
         const refined = await this.refineTranslation(markdownContent, literal);
+        onProgress?.('refined', refined);
 
         return {
             literalTranslation: literal,
@@ -34,7 +41,7 @@ export class Translator {
         };
     }
 
-    private async literalTranslate(content: string): Promise<string> {
+    public async literalTranslate(content: string): Promise<string> {
         const systemPrompt = `你是一个专业的技术与商业文章翻译官。请将下方用户提供的包含 Markdown 格式的英文原文直接翻译为中文。
 要求：
 1. 必须忠实于原文，不要增加原本不存在的信息，也不要删减细节。
@@ -53,7 +60,7 @@ export class Translator {
         return response.choices[0]?.message.content || '';
     }
 
-    private async refineTranslation(sourceText: string, literalText: string): Promise<string> {
+    public async refineTranslation(sourceText: string, literalText: string): Promise<string> {
         const systemPrompt = `你是一个资深的中文作家和文字编辑。我给你一段英文原文和对应的中文直译稿。你需要对直译稿进行深度润色，使其读起来就像是中文母语者写出的一篇高质量文章。
 
 要求：

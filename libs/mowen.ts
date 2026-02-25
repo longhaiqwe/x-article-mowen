@@ -1,4 +1,5 @@
-import { marked, Token, Tokens } from 'marked';
+import { marked } from 'marked';
+import type { Token, Tokens } from 'marked';
 
 export interface NoteAtom {
     type: string;
@@ -66,8 +67,9 @@ export class MowenPublisher {
                 }
 
                 // If the paragraph only contains an image atom, elevate it to block level
-                if (childAtoms.length === 1 && childAtoms[0].type === 'image') {
-                    return childAtoms[0];
+                const firstChild = childAtoms[0];
+                if (childAtoms.length === 1 && firstChild && firstChild.type === 'image') {
+                    return firstChild;
                 }
 
                 return {
@@ -236,7 +238,7 @@ export class MowenPublisher {
     /**
      * Publish the note to Mowen
      */
-    public async publishNote(title: string, markdown: string): Promise<any> {
+    public async publishNote(title: string, markdown: string, autoPublish: boolean = false): Promise<any> {
         console.log(`[Mowen] Starting to convert and publish note: ${title}`);
         const contentAtoms = await this.markdownToAtoms(markdown);
 
@@ -249,7 +251,7 @@ export class MowenPublisher {
         const payload = {
             body: docNode,
             settings: {
-                autoPublish: true,
+                autoPublish: autoPublish,
             }
         };
 

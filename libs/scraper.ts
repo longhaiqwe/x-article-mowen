@@ -1,4 +1,5 @@
-import { chromium, Page } from 'playwright';
+import { chromium } from 'playwright';
+import type { Page } from 'playwright';
 import TurndownService from 'turndown';
 
 export interface ScrapedResult {
@@ -19,10 +20,12 @@ export class XScraper {
      */
     private parseCookies(cookieStr: string, domain: string = '.x.com') {
         return cookieStr.split(';').map(pair => {
-            const [name, ...rest] = pair.trim().split('=');
+            const eqIdx = pair.trim().indexOf('=');
+            const name = eqIdx >= 0 ? pair.trim().slice(0, eqIdx) : pair.trim();
+            const value = eqIdx >= 0 ? pair.trim().slice(eqIdx + 1) : '';
             return {
                 name: name.trim(),
-                value: rest.join('=').trim(),
+                value: value.trim(),
                 domain: domain,
                 path: '/',
             };

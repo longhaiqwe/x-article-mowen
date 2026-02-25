@@ -1,0 +1,613 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>X Article → 墨问 ✦ 翻译发布工具</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0d0f14;
+      --surface: #13161f;
+      --surface2: #1a1e2a;
+      --border: #252a38;
+      --border-active: #3d4460;
+      --accent: #6c8ef5;
+      --accent2: #a78bfa;
+      --accent3: #34d399;
+      --text: #e2e8f0;
+      --text-muted: #64748b;
+      --text-dim: #94a3b8;
+      --error: #f87171;
+      --warning: #fbbf24;
+      --radius: 12px;
+      --radius-sm: 8px;
+    }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      line-height: 1.6;
+    }
+
+    /* ── Header ── */
+    header {
+      padding: 24px 32px;
+      border-bottom: 1px solid var(--border);
+      background: rgba(13,15,20,.8);
+      backdrop-filter: blur(12px);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .logo {
+      font-size: 22px;
+      font-weight: 700;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      letter-spacing: -0.5px;
+    }
+
+    .logo-sep { color: var(--border-active); font-weight: 300; }
+    .logo-sub { font-size: 13px; color: var(--text-muted); font-weight: 400; }
+
+    /* ── Main Layout ── */
+    .container {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 32px 24px;
+    }
+
+    /* ── Input Section ── */
+    .input-section {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 28px;
+      margin-bottom: 32px;
+      transition: border-color .2s;
+    }
+
+    .input-section:focus-within {
+      border-color: var(--border-active);
+    }
+
+    .input-label {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: .08em;
+      margin-bottom: 12px;
+    }
+
+    .input-row {
+      display: flex;
+      gap: 12px;
+    }
+
+    #url-input {
+      flex: 1;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 12px 16px;
+      color: var(--text);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 14px;
+      outline: none;
+      transition: border-color .2s, box-shadow .2s;
+    }
+
+    #url-input:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(108,142,245,.1);
+    }
+
+    #url-input::placeholder { color: var(--text-muted); }
+
+    #start-btn {
+      padding: 12px 28px;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      border: none;
+      border-radius: var(--radius-sm);
+      color: white;
+      font-family: 'Inter', sans-serif;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity .2s, transform .15s;
+      white-space: nowrap;
+    }
+
+    #start-btn:hover:not(:disabled) { opacity: .88; transform: translateY(-1px); }
+    #start-btn:active:not(:disabled) { transform: translateY(0); }
+    #start-btn:disabled { opacity: .4; cursor: not-allowed; }
+
+    /* ── Progress Bar ── */
+    .progress-section {
+      display: none;
+      margin-bottom: 28px;
+    }
+
+    .progress-section.visible { display: block; }
+
+    .progress-steps {
+      display: flex;
+      gap: 0;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+    }
+
+    .step {
+      flex: 1;
+      padding: 14px 16px;
+      text-align: center;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text-muted);
+      position: relative;
+      transition: background .3s, color .3s;
+      border-right: 1px solid var(--border);
+    }
+
+    .step:last-child { border-right: none; }
+
+    .step.active {
+      background: rgba(108,142,245,.08);
+      color: var(--accent);
+    }
+
+    .step.done {
+      background: rgba(52,211,153,.06);
+      color: var(--accent3);
+    }
+
+    .step-icon { margin-right: 6px; }
+
+    .step-spinner {
+      display: inline-block;
+      width: 12px;
+      height: 12px;
+      border: 2px solid rgba(108,142,245,.3);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin .8s linear infinite;
+      vertical-align: middle;
+      margin-right: 6px;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Content Grid ── */
+    .content-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 20px;
+    }
+
+    @media (max-width: 1100px) {
+      .content-grid { grid-template-columns: 1fr; }
+    }
+
+    .panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      min-height: 400px;
+      transition: border-color .3s;
+    }
+
+    .panel.has-content {
+      border-color: var(--border-active);
+    }
+
+    .panel-header {
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .panel-badge {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--border-active);
+      transition: background .3s;
+      flex-shrink: 0;
+    }
+
+    .panel.has-content .panel-badge { background: var(--accent3); }
+
+    .panel-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-dim);
+      text-transform: uppercase;
+      letter-spacing: .06em;
+    }
+
+    .panel-meta {
+      margin-left: auto;
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    .panel-body {
+      padding: 20px;
+      flex: 1;
+      overflow-y: auto;
+      max-height: 70vh;
+    }
+
+    .panel-placeholder {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      min-height: 200px;
+      color: var(--text-muted);
+      font-size: 13px;
+      gap: 8px;
+    }
+
+    .panel-placeholder-icon { font-size: 28px; opacity: .4; }
+
+    /* ── Markdown Rendering ── */
+    .md-content { font-size: 14px; line-height: 1.8; color: var(--text-dim); }
+    .md-content h1, .md-content h2, .md-content h3 {
+      color: var(--text);
+      margin: 1.2em 0 .5em;
+      font-weight: 600;
+      line-height: 1.3;
+    }
+    .md-content h1 { font-size: 1.3em; }
+    .md-content h2 { font-size: 1.15em; }
+    .md-content h3 { font-size: 1.05em; }
+    .md-content p { margin: .75em 0; }
+    .md-content img { max-width: 100%; border-radius: 8px; margin: 8px 0; }
+    .md-content a { color: var(--accent); text-decoration: none; }
+    .md-content a:hover { text-decoration: underline; }
+    .md-content strong { color: var(--text); font-weight: 600; }
+    .md-content em { font-style: italic; color: var(--text); }
+    .md-content blockquote {
+      border-left: 3px solid var(--accent);
+      padding: 4px 16px;
+      margin: 12px 0;
+      color: var(--text-muted);
+      background: rgba(108,142,245,.04);
+      border-radius: 0 6px 6px 0;
+    }
+    .md-content code {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: .85em;
+      background: var(--surface2);
+      padding: 2px 6px;
+      border-radius: 4px;
+      color: var(--accent2);
+    }
+    .md-content pre {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 16px;
+      overflow-x: auto;
+      margin: 12px 0;
+    }
+    .md-content pre code { background: none; padding: 0; }
+    .md-content ul, .md-content ol { padding-left: 1.5em; margin: .75em 0; }
+    .md-content li { margin: .3em 0; }
+
+    /* ── Publish Result ── */
+    .publish-result {
+      margin-top: 24px;
+      padding: 20px 24px;
+      border-radius: var(--radius);
+      display: none;
+      align-items: flex-start;
+      gap: 14px;
+      font-size: 14px;
+    }
+
+    .publish-result.visible { display: flex; }
+    .publish-result.success { background: rgba(52,211,153,.08); border: 1px solid rgba(52,211,153,.25); }
+    .publish-result.failure { background: rgba(248,113,113,.08); border: 1px solid rgba(248,113,113,.25); }
+
+    .publish-icon { font-size: 22px; flex-shrink: 0; }
+    .publish-text { flex: 1; }
+    .publish-title { font-weight: 600; margin-bottom: 4px; }
+    .publish-result.success .publish-title { color: var(--accent3); }
+    .publish-result.failure .publish-title { color: var(--error); }
+    .publish-detail { color: var(--text-muted); font-size: 13px; }
+
+    /* ── Fade In Animation ── */
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .fade-in { animation: fadeIn .4s ease forwards; }
+
+    /* ── Scrollbar ── */
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border-active); border-radius: 3px; }
+  </style>
+</head>
+<body>
+
+<header>
+  <div>
+    <div class="logo">X Article <span class="logo-sep">→</span> 墨问</div>
+    <div class="logo-sub">AI 翻译 + 实时处理过程可视化</div>
+  </div>
+</header>
+
+<div class="container">
+
+  <!-- Input -->
+  <div class="input-section">
+    <div class="input-label">输入 X 文章链接</div>
+    <div class="input-row">
+      <input
+        id="url-input"
+        type="url"
+        placeholder="https://x.com/user/status/123456789..."
+        autocomplete="off"
+        spellcheck="false"
+      />
+      <button id="start-btn" onclick="startProcess()">开始处理 →</button>
+    </div>
+  </div>
+
+  <!-- Progress Steps -->
+  <div class="progress-section" id="progress-section">
+    <div class="progress-steps">
+      <div class="step" id="step-scraping">
+        <span class="step-icon">📄</span>抓取原文
+      </div>
+      <div class="step" id="step-translating">
+        <span class="step-icon">🔤</span>直译
+      </div>
+      <div class="step" id="step-refining">
+        <span class="step-icon">✨</span>润色
+      </div>
+      <div class="step" id="step-publishing">
+        <span class="step-icon">📤</span>发布墨问
+      </div>
+    </div>
+  </div>
+
+  <!-- Content Panels -->
+  <div class="content-grid">
+    <!-- 原文 Panel -->
+    <div class="panel" id="panel-original">
+      <div class="panel-header">
+        <div class="panel-badge"></div>
+        <div class="panel-title">原文</div>
+        <div class="panel-meta" id="meta-original"></div>
+      </div>
+      <div class="panel-body" id="body-original">
+        <div class="panel-placeholder">
+          <div class="panel-placeholder-icon">📄</div>
+          <div>等待抓取原文...</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 直译 Panel -->
+    <div class="panel" id="panel-literal">
+      <div class="panel-header">
+        <div class="panel-badge"></div>
+        <div class="panel-title">第一步：直译</div>
+        <div class="panel-meta" id="meta-literal"></div>
+      </div>
+      <div class="panel-body" id="body-literal">
+        <div class="panel-placeholder">
+          <div class="panel-placeholder-icon">🔤</div>
+          <div>等待 AI 直译...</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 润色 Panel -->
+    <div class="panel" id="panel-refined">
+      <div class="panel-header">
+        <div class="panel-badge"></div>
+        <div class="panel-title">第二步：润色</div>
+        <div class="panel-meta" id="meta-refined"></div>
+      </div>
+      <div class="panel-body" id="body-refined">
+        <div class="panel-placeholder">
+          <div class="panel-placeholder-icon">✨</div>
+          <div>等待 AI 润色...</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Publish Result -->
+  <div class="publish-result" id="publish-result">
+    <div class="publish-icon" id="publish-icon"></div>
+    <div class="publish-text">
+      <div class="publish-title" id="publish-title"></div>
+      <div class="publish-detail" id="publish-detail"></div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  let currentSource = null;
+
+  function startProcess() {
+    const url = document.getElementById('url-input').value.trim();
+    if (!url) return alert('请输入 X 文章链接');
+
+    // Reset UI
+    resetUI();
+
+    const btn = document.getElementById('start-btn');
+    btn.disabled = true;
+    btn.textContent = '处理中...';
+
+    document.getElementById('progress-section').classList.add('visible');
+
+    setStepActive('scraping');
+
+    // Connect SSE
+    if (currentSource) currentSource.close();
+    const encodedUrl = encodeURIComponent(url);
+    currentSource = new EventSource(`/process?url=${encodedUrl}`);
+
+    currentSource.addEventListener('scraped', (e) => {
+      const data = JSON.parse(e.data);
+      setStepDone('scraping');
+      setStepActive('translating');
+      renderPanel('original', data.content, data.title, data.content.length);
+    });
+
+    currentSource.addEventListener('literal', (e) => {
+      const data = JSON.parse(e.data);
+      setStepDone('translating');
+      setStepActive('refining');
+      renderPanel('literal', data.content, '直译稿', data.content.length);
+    });
+
+    currentSource.addEventListener('refined', (e) => {
+      const data = JSON.parse(e.data);
+      setStepDone('refining');
+      setStepActive('publishing');
+      renderPanel('refined', data.content, '润色稿', data.content.length);
+    });
+
+    currentSource.addEventListener('published', (e) => {
+      const data = JSON.parse(e.data);
+      setStepDone('publishing');
+      showPublishResult(data);
+    });
+
+    currentSource.addEventListener('error', (e) => {
+      let msg = '未知错误';
+      try { msg = JSON.parse(e.data).message; } catch {}
+      showError(msg);
+      finalize();
+    });
+
+    currentSource.addEventListener('done', () => {
+      finalize();
+    });
+
+    // Handle SSE connection error (network level)
+    currentSource.onerror = () => {
+      if (currentSource.readyState === EventSource.CLOSED) {
+        finalize();
+      }
+    };
+  }
+
+  function resetUI() {
+    ['original', 'literal', 'refined'].forEach(id => {
+      const panel = document.getElementById(`panel-${id}`);
+      const body = document.getElementById(`body-${id}`);
+      const meta = document.getElementById(`meta-${id}`);
+      panel.classList.remove('has-content');
+      meta.textContent = '';
+      const placeholders = { original: '等待抓取原文...', literal: '等待 AI 直译...', refined: '等待 AI 润色...' };
+      const icons = { original: '📄', literal: '🔤', refined: '✨' };
+      body.innerHTML = `<div class="panel-placeholder"><div class="panel-placeholder-icon">${icons[id]}</div><div>${placeholders[id]}</div></div>`;
+    });
+
+    const result = document.getElementById('publish-result');
+    result.className = 'publish-result';
+
+    ['scraping', 'translating', 'refining', 'publishing'].forEach(s => {
+      const el = document.getElementById(`step-${s}`);
+      el.className = 'step';
+    });
+
+    document.getElementById('progress-section').classList.remove('visible');
+  }
+
+  function renderPanel(id, markdown, subtitle, charCount) {
+    const panel = document.getElementById(`panel-${id}`);
+    const body = document.getElementById(`body-${id}`);
+    const meta = document.getElementById(`meta-${id}`);
+
+    panel.classList.add('has-content');
+    meta.textContent = `${charCount.toLocaleString()} 字符`;
+
+    const html = marked.parse(markdown);
+    body.innerHTML = `<div class="md-content fade-in">${html}</div>`;
+  }
+
+  function showPublishResult(data) {
+    const result = document.getElementById('publish-result');
+    const icon = document.getElementById('publish-icon');
+    const title = document.getElementById('publish-title');
+    const detail = document.getElementById('publish-detail');
+
+    result.classList.add('visible', data.success ? 'success' : 'failure');
+    icon.textContent = data.success ? '✅' : '❌';
+    title.textContent = data.success ? '发布成功（非公开）' : '发布失败';
+    detail.textContent = data.noteId ? `NoteID: ${data.noteId} — ${data.message}` : data.message;
+  }
+
+  function showError(msg) {
+    const result = document.getElementById('publish-result');
+    result.classList.add('visible', 'failure');
+    document.getElementById('publish-icon').textContent = '⚠️';
+    document.getElementById('publish-title').textContent = '处理出错';
+    document.getElementById('publish-detail').textContent = msg;
+  }
+
+  function setStepActive(name) {
+    const el = document.getElementById(`step-${name}`);
+    const icons = { scraping: '📄', translating: '🔤', refining: '✨', publishing: '📤' };
+    const labels = { scraping: '抓取原文', translating: '直译', refining: '润色', publishing: '发布墨问' };
+    el.className = 'step active';
+    el.innerHTML = `<span class="step-spinner"></span>${labels[name]}`;
+  }
+
+  function setStepDone(name) {
+    const el = document.getElementById(`step-${name}`);
+    const labels = { scraping: '抓取原文', translating: '直译', refining: '润色', publishing: '发布墨问' };
+    el.className = 'step done';
+    el.innerHTML = `<span class="step-icon">✓ </span>${labels[name]}`;
+  }
+
+  function finalize() {
+    if (currentSource) { currentSource.close(); currentSource = null; }
+    const btn = document.getElementById('start-btn');
+    btn.disabled = false;
+    btn.textContent = '开始处理 →';
+  }
+
+  // Allow pressing Enter in input
+  document.getElementById('url-input').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') startProcess();
+  });
+</script>
+
+</body>
+</html>
