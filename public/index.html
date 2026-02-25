@@ -422,19 +422,20 @@
 
     /* ── Grid ── */
     .grid {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
+      display: flex;
       gap: 16px;
     }
 
     @media (max-width: 1100px) {
       .grid {
-        grid-template-columns: 1fr;
+        flex-direction: column;
       }
     }
 
     /* ── Panel ── */
     .panel {
+      flex: 1;
+      min-width: 0;
       background: var(--bg1);
       border: 1px solid var(--line);
       border-top: 2px solid var(--line2);
@@ -836,7 +837,7 @@
         </div>
       </div>
 
-      <div class="panel" id="pnl-reviews" style="display: none;">
+      <div class="panel" id="pnl-reviews">
         <div class="panel-hd">
           <div class="panel-dots">
             <div class="panel-dot"></div>
@@ -847,7 +848,10 @@
           <div class="panel-chars" id="ch-reviews"></div>
         </div>
         <div class="panel-body" id="bd-reviews" style="display:flex; flex-direction:column; gap:16px;">
-          <!-- dynamic inject -->
+          <div class="placeholder" id="placeholder-reviews">
+            <div class="placeholder-glyph">❒</div>
+            <div class="placeholder-text">Awaiting reviews…</div>
+          </div>
         </div>
       </div>
 
@@ -954,18 +958,16 @@
       });
 
       // 重置面板
-      ['original', 'draft', 'final'].forEach(id => {
+      ['original', 'draft', 'reviews', 'final'].forEach(id => {
         const pnl = document.getElementById('pnl-' + id);
         if (pnl) {
           pnl.classList.remove('lit');
           document.getElementById('ch-' + id).textContent = '';
-          const labels = { original: 'Awaiting scrape…', draft: 'Awaiting draft…', final: 'Awaiting final polish…' };
+          const labels = { original: 'Awaiting scrape…', draft: 'Awaiting draft…', reviews: 'Awaiting reviews…', final: 'Awaiting final polish…' };
           document.getElementById('bd-' + id).innerHTML =
             `<div class="placeholder"><div class="placeholder-glyph">❒</div><div class="placeholder-text">${labels[id]}</div></div>`;
         }
       });
-      document.getElementById('pnl-reviews').style.display = 'none';
-      document.getElementById('bd-reviews').innerHTML = '';
 
       document.getElementById('result-banner').className = 'result-banner';
 
@@ -1026,11 +1028,21 @@
             setDone('draft');
             setActive('reviews');
             const revPanel = document.getElementById('pnl-reviews');
-            if (revPanel.style.display === 'none') revPanel.style.display = 'flex';
+            revPanel.classList.add('lit');
+
+            // Remove placeholder if it exists
+            const placeholder = document.getElementById('placeholder-reviews');
+            if (placeholder) {
+              placeholder.remove();
+            }
 
             const rType = stage.split('_')[1];
             if (!reviewDOM[rType]) {
               const bd = document.getElementById('bd-reviews');
+              // Clear "Awaiting reviews..." placeholder if it's there
+              if (bd.querySelector('.placeholder')) {
+                bd.innerHTML = '';
+              }
               bd.innerHTML += `<div class="md" style="font-size:12px; background:var(--bg2); padding:10px; border-radius:4px" id="md-rev-${rType}"><strong>${rType.toUpperCase()}</strong><br/></div>`;
               reviewDOM[rType] = true;
             }
@@ -1039,8 +1051,6 @@
           else if (stage === 'synthesis') {
             setDone('reviews');
             setActive('synthesis');
-            // We can repurpose the original panel or just show a status
-            document.getElementById('bd-original').innerHTML = `<div class="placeholder"><div class="placeholder-glyph">✺</div><div class="placeholder-text">Synthesizing Reviews...</div></div>`;
           }
           else if (stage === 'final') {
             setDone('synthesis');
