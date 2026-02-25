@@ -232,7 +232,17 @@ export class MowenPublisher {
             if (atom) atoms.push(atom);
         }
 
-        return atoms;
+        // 在每两个块级节点之间插入一个空段落（空行）
+        const emptyParagraph = (): NoteAtom => ({ type: 'paragraph', content: [] });
+        const atomsWithSpacing: NoteAtom[] = [];
+        atoms.forEach((atom, i) => {
+            atomsWithSpacing.push(atom);
+            if (i < atoms.length - 1) {
+                atomsWithSpacing.push(emptyParagraph());
+            }
+        });
+
+        return atomsWithSpacing;
     }
 
     /**
