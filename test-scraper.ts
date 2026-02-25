@@ -1,4 +1,4 @@
-import { XScraper } from './libs/scraper';
+import { XScraper } from './libs/scraper.js';
 import * as dotenv from 'dotenv';
 import * as fs from 'fs';
 

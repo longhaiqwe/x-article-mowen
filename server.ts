@@ -66,27 +66,85 @@ async function handleScrape(url: string, res: http.ServerResponse) {
     }
 }
 
-// ── Step 2-4: Translate & Review & Refine Pipeline ────────────────
-async function handleProcessPipeline(markdown: string, res: http.ServerResponse) {
+// ── Step 2: Draft ──────────────────────────────────────────────
+async function handleDraft(markdown: string, res: http.ServerResponse) {
     initSSE(res);
     try {
-        sendEvent(res, 'status', { message: '初始化翻译 AI...' });
+        sendEvent(res, 'status', { message: '开始初步改写...' });
         const translator = new Translator(OPENAI_API_KEY, OPENAI_BASE_URL, OPENAI_MODEL);
 
-        await translator.translateMarkdown(
+        const draft = await translator.draftTranslate(
             markdown,
-            (stage, content) => {
-                // When a stage is complete
-                sendEvent(res, `stage_complete`, { stage, content });
-            },
-            (stage, chunk) => {
-                // Real-time streaming chunks
-                sendEvent(res, `stage_chunk`, { stage, chunk });
-            }
+            (chunk) => sendEvent(res, `stage_chunk`, { stage: 'draft', chunk })
         );
-        sendEvent(res, 'done', { message: '翻译评审流程完毕！' });
+        sendEvent(res, 'stage_complete', { stage: 'draft', content: draft });
+        sendEvent(res, 'done', { message: '初步改写完成' });
     } catch (e) {
-        sendEvent(res, 'error', { message: `AI处理失败：${(e as Error).message}` });
+        sendEvent(res, 'error', { message: `初步改写失败：${(e as Error).message}` });
+    } finally {
+        res.end();
+    }
+}
+
+// ── Step 3: Review ─────────────────────────────────────────────
+async function handleReview(original: string, draft: string, res: http.ServerResponse) {
+    initSSE(res);
+    try {
+        sendEvent(res, 'status', { message: '开始并行评审...' });
+        const translator = new Translator(OPENAI_API_KEY, OPENAI_BASE_URL, OPENAI_MODEL);
+
+        const [fluency, accuracy, style] = await Promise.all([
+            translator.reviewFluency(original, draft, (c) => sendEvent(res, 'stage_chunk', { stage: 'review_fluency', chunk: c })),
+            translator.reviewAccuracy(original, draft, (c) => sendEvent(res, 'stage_chunk', { stage: 'review_accuracy', chunk: c })),
+            translator.reviewStyle(original, draft, (c) => sendEvent(res, 'stage_chunk', { stage: 'review_style', chunk: c }))
+        ]);
+
+        sendEvent(res, 'stage_complete', { stage: 'reviews', content: { fluency, accuracy, style } });
+        sendEvent(res, 'done', { message: '评审完毕' });
+    } catch (e) {
+        sendEvent(res, 'error', { message: `评审失败：${(e as Error).message}` });
+    } finally {
+        res.end();
+    }
+}
+
+// ── Step 4: Synthesis ──────────────────────────────────────────
+async function handleSynthesis(original: string, draft: string, reviews: { fluency: string; accuracy: string; style: string }, res: http.ServerResponse) {
+    initSSE(res);
+    try {
+        sendEvent(res, 'status', { message: '开始综合改写...' });
+        const translator = new Translator(OPENAI_API_KEY, OPENAI_BASE_URL, OPENAI_MODEL);
+
+        const synth = await translator.synthesizeReviews(
+            original,
+            draft,
+            reviews,
+            (c) => sendEvent(res, 'stage_chunk', { stage: 'synthesis', chunk: c })
+        );
+        sendEvent(res, 'stage_complete', { stage: 'synthesis', content: synth });
+        sendEvent(res, 'done', { message: '综合改写完成' });
+    } catch (e) {
+        sendEvent(res, 'error', { message: `综合处理失败：${(e as Error).message}` });
+    } finally {
+        res.end();
+    }
+}
+
+// ── Step 5: Final Polish ───────────────────────────────────────
+async function handleFinalPolish(synth: string, res: http.ServerResponse) {
+    initSSE(res);
+    try {
+        sendEvent(res, 'status', { message: '开始最终润色...' });
+        const translator = new Translator(OPENAI_API_KEY, OPENAI_BASE_URL, OPENAI_MODEL);
+
+        const finalContent = await translator.finalPolish(
+            synth,
+            (c) => sendEvent(res, 'stage_chunk', { stage: 'final', chunk: c })
+        );
+        sendEvent(res, 'stage_complete', { stage: 'final', content: finalContent });
+        sendEvent(res, 'done', { message: '最终润色完成' });
+    } catch (e) {
+        sendEvent(res, 'error', { message: `润色失败：${(e as Error).message}` });
     } finally {
         res.end();
     }
@@ -147,12 +205,39 @@ const server = http.createServer(async (req, res) => {
         return;
     }
 
-    // Step 2: POST /process  body: { markdown }
-    if (pathname === '/process' && req.method === 'POST') {
+    // Step 2: POST /process/draft
+    if (pathname === '/process/draft' && req.method === 'POST') {
         const body = await readBody(req);
         const { markdown } = JSON.parse(body);
         if (!markdown) { res.writeHead(400); res.end(JSON.stringify({ error: 'Missing markdown' })); return; }
-        await handleProcessPipeline(markdown, res);
+        await handleDraft(markdown, res);
+        return;
+    }
+
+    // Step 3: POST /process/review
+    if (pathname === '/process/review' && req.method === 'POST') {
+        const body = await readBody(req);
+        const { original, draft } = JSON.parse(body);
+        if (!original || !draft) { res.writeHead(400); res.end(JSON.stringify({ error: 'Missing original or draft' })); return; }
+        await handleReview(original, draft, res);
+        return;
+    }
+
+    // Step 4: POST /process/synthesis
+    if (pathname === '/process/synthesis' && req.method === 'POST') {
+        const body = await readBody(req);
+        const { original, draft, reviews } = JSON.parse(body);
+        if (!original || !draft || !reviews) { res.writeHead(400); res.end(JSON.stringify({ error: 'Missing specific params' })); return; }
+        await handleSynthesis(original, draft, reviews, res);
+        return;
+    }
+
+    // Step 5: POST /process/final
+    if (pathname === '/process/final' && req.method === 'POST') {
+        const body = await readBody(req);
+        const { synthesis } = JSON.parse(body);
+        if (!synthesis) { res.writeHead(400); res.end(JSON.stringify({ error: 'Missing synthesis payload' })); return; }
+        await handleFinalPolish(synthesis, res);
         return;
     }
 
@@ -174,6 +259,9 @@ server.listen(PORT, () => {
     console.log(`📡 访问地址: http://localhost:${PORT}\n`);
     console.log('📋 调试模式：步骤可单独手动触发');
     console.log('   GET  /scrape?url=...   → Step 1 抓取原文');
-    console.log('   POST /process          → Step 2 初译、评审及最终润色（全自动）');
+    console.log('   POST /process/draft    → Step 2 初稿');
+    console.log('   POST /process/review   → Step 3 并行评审');
+    console.log('   POST /process/synthesis→ Step 4 综合改写');
+    console.log('   POST /process/final    → Step 5 润色');
     console.log('   POST /publish          → Step 3 提取信息发布\n');
 });

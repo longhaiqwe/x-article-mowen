@@ -1,4 +1,4 @@
-import { MowenPublisher } from './libs/mowen';
+import { MowenPublisher } from './libs/mowen.js';
 
 async function main() {
     const publisher = new MowenPublisher('dummy-key', 'dummy-space');

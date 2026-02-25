@@ -774,26 +774,31 @@
         <div class="pipe-num">02</div>
         <div class="pipe-spinner"></div>
         <div class="pipe-label">DRAFT</div>
+        <button class="pipe-btn" id="btn-draft" onclick="runDraft()">START</button>
       </div>
       <div class="pipe-step" id="ps-reviews">
         <div class="pipe-num">03</div>
         <div class="pipe-spinner"></div>
         <div class="pipe-label">REVIEW (x3)</div>
+        <button class="pipe-btn" id="btn-reviews" onclick="runReviews()">START</button>
       </div>
       <div class="pipe-step" id="ps-synthesis">
         <div class="pipe-num">04</div>
         <div class="pipe-spinner"></div>
         <div class="pipe-label">SYNTHESIS</div>
+        <button class="pipe-btn" id="btn-synthesis" onclick="runSynthesis()">START</button>
       </div>
       <div class="pipe-step" id="ps-final">
         <div class="pipe-num">05</div>
         <div class="pipe-spinner"></div>
         <div class="pipe-label">FINAL POLISH</div>
+        <button class="pipe-btn" id="btn-final" onclick="runFinal()">START</button>
       </div>
       <div class="pipe-step" id="ps-publishing">
         <div class="pipe-num">06</div>
         <div class="pipe-spinner"></div>
         <div class="pipe-label">PUBLISH</div>
+        <button class="pipe-btn" id="btn-publishing" onclick="runPublish()">START</button>
       </div>
     </div>
 
@@ -889,9 +894,11 @@
   <script>
     // ── 状态 ────────────────────────────────────────────
     let currentUrl = '';
-    let originalMarkdown = '';  // 抓取到的原文
-    let draftMarkdown = '';   // 初稿结果
-    let finalMarkdown = '';   // 润色结果
+    let originalMarkdown = '';  
+    let draftMarkdown = '';   
+    let reviewsData = null;
+    let synthesisMarkdown = '';
+    let finalMarkdown = '';   
     let articleTitle = 'X Article';
     let currentSSE = null;
     const streamBuf = {
@@ -957,7 +964,14 @@
         document.getElementById('ps-' + s).className = 'pipe-step';
       });
 
-      // 重置面板
+      // 重置面板和按钮
+      ['draft', 'reviews', 'synthesis', 'final', 'publishing'].forEach(id => {
+        const btn = document.getElementById('btn-' + id);
+        if (btn) {
+          btn.className = 'pipe-btn';
+          btn.textContent = 'START';
+        }
+      });
       ['original', 'draft', 'reviews', 'final'].forEach(id => {
         const pnl = document.getElementById('pnl-' + id);
         if (pnl) {
@@ -991,7 +1005,7 @@
       currentSSE.addEventListener('done', () => {
         setDone('scraping');
         closeSSE();
-        runAiPipeline(); // trigger next step
+        setReady('btn-draft'); 
       });
 
       currentSSE.addEventListener('error', e => {
@@ -1004,97 +1018,128 @@
       currentSSE.onerror = () => { if (currentSSE && currentSSE.readyState === EventSource.CLOSED) closeSSE(); };
     }
 
-    // ── Central AI Pipeline ──────────────────────────
-    function runAiPipeline() {
-      closeSSE();
-      originalMarkdown;
-      let reviewDOM = { fluency: null, accuracy: null, style: null };
+    let reviewDOM = { fluency: null, accuracy: null, style: null };
 
-      listenSSE('/process', { markdown: originalMarkdown }, {
+    // ── 分步 Pipeline ──────────────────────────
+    function runDraft() {
+      const btn = document.getElementById('btn-draft');
+      if (btn.className !== 'pipe-btn ready') return;
+      setBtnRunning('btn-draft');
+      setActive('draft');
+      
+      listenSSE('/process/draft', { markdown: originalMarkdown }, {
         stage_chunk: (data) => {
-          const { stage, chunk } = data;
-          streamBuf[stage] += chunk;
-
-          if (stage === 'draft') {
-            setActive('draft');
-            if (!document.getElementById('md-draft')) {
-              document.getElementById('pnl-draft').classList.add('lit');
-              document.getElementById('bd-draft').innerHTML = '<div class="md" id="md-draft"></div>';
-            }
-            document.getElementById('md-draft').innerHTML = marked.parse(streamBuf.draft);
-            document.getElementById('ch-draft').textContent = streamBuf.draft.length.toLocaleString() + ' ch';
+          const { chunk } = data;
+          streamBuf.draft += chunk;
+          if (!document.getElementById('md-draft')) {
+            document.getElementById('pnl-draft').classList.add('lit');
+            document.getElementById('bd-draft').innerHTML = '<div class="md" id="md-draft"></div>';
           }
-          else if (stage.startsWith('review_')) {
-            setDone('draft');
-            setActive('reviews');
-            const revPanel = document.getElementById('pnl-reviews');
-            revPanel.classList.add('lit');
-
-            // Remove placeholder if it exists
-            const placeholder = document.getElementById('placeholder-reviews');
-            if (placeholder) {
-              placeholder.remove();
-            }
-
-            const rType = stage.split('_')[1];
-            if (!reviewDOM[rType]) {
-              const bd = document.getElementById('bd-reviews');
-              // Clear "Awaiting reviews..." placeholder if it's there
-              if (bd.querySelector('.placeholder')) {
-                bd.innerHTML = '';
-              }
-              bd.innerHTML += `<div class="md" style="font-size:12px; background:var(--bg2); padding:10px; border-radius:4px" id="md-rev-${rType}"><strong>${rType.toUpperCase()}</strong><br/></div>`;
-              reviewDOM[rType] = true;
-            }
-            document.getElementById('md-rev-' + rType).innerHTML = marked.parse('**' + rType.toUpperCase() + ' Review**\n\n' + streamBuf[stage]);
-          }
-          else if (stage === 'synthesis') {
-            setDone('reviews');
-            setActive('synthesis');
-          }
-          else if (stage === 'final') {
-            setDone('synthesis');
-            setActive('final');
-            if (!document.getElementById('md-final')) {
-              document.getElementById('pnl-final').classList.add('lit');
-              document.getElementById('bd-final').innerHTML = '<div class="md" id="md-final"></div>';
-            }
-            document.getElementById('md-final').innerHTML = marked.parse(streamBuf.final);
-            document.getElementById('ch-final').textContent = streamBuf.final.length.toLocaleString() + ' ch';
-          }
+          document.getElementById('md-draft').innerHTML = marked.parse(streamBuf.draft);
+          document.getElementById('ch-draft').textContent = streamBuf.draft.length.toLocaleString() + ' ch';
         },
-        stage_complete: (data) => {
-          const { stage, content } = data;
-          if (stage === 'final') {
-            finalMarkdown = content;
-          }
-        },
+        stage_complete: (data) => { draftMarkdown = data.content; },
         done: () => {
-          setDone('final');
-          runPublish();
+          setDone('draft'); setBtnDone('btn-draft'); setReady('btn-reviews');
         },
-        error: (data) => {
-          showResult(false, 'PIPELINE ERROR', data.message);
-        }
+        error: (err) => { showResult(false, 'DRAFT ERROR', err.message); setBtnDone('btn-draft'); }
       });
     }
 
-    // SSE 通过 fetch+ReadableStream 读取（POST SSE）
+    function runReviews() {
+      const btn = document.getElementById('btn-reviews');
+      if (btn.className !== 'pipe-btn ready') return;
+      setBtnRunning('btn-reviews');
+      setActive('reviews');
+      
+      const revPanel = document.getElementById('pnl-reviews');
+      revPanel.classList.add('lit');
+      const placeholder = document.getElementById('placeholder-reviews');
+      if (placeholder) placeholder.remove();
 
-    // ── Step 4: Publish ──────────────────────────────────
+      listenSSE('/process/review', { original: originalMarkdown, draft: draftMarkdown }, {
+        stage_chunk: (data) => {
+          const { stage, chunk } = data;
+          streamBuf[stage] += chunk;
+          const rType = stage.split('_')[1];
+          if (!reviewDOM[rType]) {
+            const bd = document.getElementById('bd-reviews');
+            if (bd.querySelector('.placeholder')) bd.innerHTML = '';
+            bd.innerHTML += `<div class="md" style="font-size:12px; background:var(--bg2); padding:10px; border-radius:4px" id="md-rev-${rType}"><strong>${rType.toUpperCase()}</strong><br/></div>`;
+            reviewDOM[rType] = true;
+          }
+          document.getElementById('md-rev-' + rType).innerHTML = marked.parse('**' + rType.toUpperCase() + ' Review**\n\n' + streamBuf[stage]);
+        },
+        stage_complete: (data) => { reviewsData = data.content; },
+        done: () => {
+          setDone('reviews'); setBtnDone('btn-reviews'); setReady('btn-synthesis');
+        },
+        error: (err) => { showResult(false, 'REVIEW ERROR', err.message); setBtnDone('btn-reviews'); }
+      });
+    }
+
+    function runSynthesis() {
+      const btn = document.getElementById('btn-synthesis');
+      if (btn.className !== 'pipe-btn ready') return;
+      setBtnRunning('btn-synthesis');
+      setActive('synthesis');
+
+      listenSSE('/process/synthesis', { original: originalMarkdown, draft: draftMarkdown, reviews: reviewsData }, {
+        stage_chunk: (data) => {
+          // No visual panel for synthesis yet, but we receive it in streamBuf.synthesis if needed
+          streamBuf.synthesis += data.chunk;
+        },
+        stage_complete: (data) => { synthesisMarkdown = data.content; },
+        done: () => {
+          setDone('synthesis'); setBtnDone('btn-synthesis'); setReady('btn-final');
+        },
+        error: (err) => { showResult(false, 'SYNTHESIS ERROR', err.message); setBtnDone('btn-synthesis'); }
+      });
+    }
+
+    function runFinal() {
+      const btn = document.getElementById('btn-final');
+      if (btn.className !== 'pipe-btn ready') return;
+      setBtnRunning('btn-final');
+      setActive('final');
+
+      listenSSE('/process/final', { synthesis: synthesisMarkdown }, {
+        stage_chunk: (data) => {
+          streamBuf.final += data.chunk;
+          if (!document.getElementById('md-final')) {
+            document.getElementById('pnl-final').classList.add('lit');
+            document.getElementById('bd-final').innerHTML = '<div class="md" id="md-final"></div>';
+          }
+          document.getElementById('md-final').innerHTML = marked.parse(streamBuf.final);
+          document.getElementById('ch-final').textContent = streamBuf.final.length.toLocaleString() + ' ch';
+        },
+        stage_complete: (data) => { finalMarkdown = data.content; },
+        done: () => {
+          setDone('final'); setBtnDone('btn-final'); setReady('btn-publishing');
+        },
+        error: (err) => { showResult(false, 'FINAL POLISH ERROR', err.message); setBtnDone('btn-final'); }
+      });
+    }
+
+    // ── Step 6: Publish ──────────────────────────────────
     function runPublish() {
+      const btn = document.getElementById('btn-publishing');
+      if (btn.className !== 'pipe-btn ready') return;
+      setBtnRunning('btn-publishing');
       setActive('publishing');
 
       const title = articleTitle + ' (中文翻译)';
       listenSSE('/publish', { title, markdown: finalMarkdown }, {
         published: (data) => {
           setDone('publishing');
+          setBtnDone('btn-publishing');
           showResult(data.success,
             data.success ? 'PUBLISH COMPLETE' : 'PUBLISH FAILED',
             data.noteId ? `NoteID: ${data.noteId}   ${data.message}` : data.message);
         },
         error: (data) => {
           showResult(false, 'PUBLISH ERROR', data.message);
+          setBtnDone('btn-publishing');
         }
       });
     }

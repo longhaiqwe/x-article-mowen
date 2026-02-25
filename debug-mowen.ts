@@ -1,4 +1,4 @@
-import { MowenPublisher } from './libs/mowen';
+import { MowenPublisher } from './libs/mowen.js';
 import * as dotenv from 'dotenv';
 import * as fs from 'fs';
 dotenv.config();

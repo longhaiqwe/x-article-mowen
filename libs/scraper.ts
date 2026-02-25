@@ -129,7 +129,7 @@ export class XScraper {
                             if (tag === 'a') {
                                 const href = elem.getAttribute('data-expanded-url')
                                     || elem.getAttribute('href') || '';
-                                const text = Array.from(elem.childNodes).map(domToMd).join('').trim();
+                                const text = Array.from(elem.childNodes).map(n => domToMd(n)).join('').trim();
                                 if (!text) return '';
                                 if (!href || href === text) return text;
                                 return `[${text}](${href})`;
@@ -137,21 +137,66 @@ export class XScraper {
 
                             // <strong>/<b> → **bold**
                             if (tag === 'strong' || tag === 'b') {
-                                const inner = Array.from(elem.childNodes).map(domToMd).join('');
+                                const inner = Array.from(elem.childNodes).map(n => domToMd(n)).join('');
                                 return inner ? `**${inner}**` : '';
                             }
 
                             // <em>/<i> → *italic*
                             if (tag === 'em' || tag === 'i') {
-                                const inner = Array.from(elem.childNodes).map(domToMd).join('');
+                                const inner = Array.from(elem.childNodes).map(n => domToMd(n)).join('');
                                 return inner ? `*${inner}*` : '';
                             }
 
+                            // Headings h1-h6 → # Heading
+                            if (/^h[1-6]$/.test(tag)) {
+                                const level = parseInt(tag[1] || '1', 10);
+                                const prefix = '#'.repeat(level);
+                                const inner = Array.from(elem.childNodes).map(n => domToMd(n)).join('').trim();
+                                return inner ? `\n\n${prefix} ${inner}\n\n` : '';
+                            }
+
+                            // blockquote → > Quote
+                            if (tag === 'blockquote') {
+                                const inner = Array.from(elem.childNodes).map(n => domToMd(n)).join('').trim();
+                                if (!inner) return '';
+                                // Prefix each line with '> '
+                                const quoted = inner.split('\n').map(line => `> ${line}`).join('\n');
+                                return `\n\n${quoted}\n\n`;
+                            }
+
+                            // <ul>/<ol> → lists
+                            if (tag === 'ul' || tag === 'ol') {
+                                const inner = Array.from(elem.childNodes).map(n => domToMd(n)).join('\n');
+                                return inner ? `\n\n${inner}\n\n` : '';
+                            }
+
+                            // <li> → list item
+                            if (tag === 'li') {
+                                const parent = elem.parentElement;
+                                const isOrdered = parent && parent.tagName.toLowerCase() === 'ol';
+                                const inner = Array.from(elem.childNodes).map(n => domToMd(n)).join('').trim();
+                                if (!inner) return '';
+
+                                if (isOrdered) {
+                                    // Basic ordered list (numbers might not be 100% accurate without index counting, 
+                                    // but markdown parser will auto-correct 1. 1. 1. to 1. 2. 3.)
+                                    return `1. ${inner}`;
+                                } else {
+                                    return `* ${inner}`;
+                                }
+                            }
+
+                            // <p> → paragraph
+                            if (tag === 'p') {
+                                const inner = Array.from(elem.childNodes).map(n => domToMd(n)).join('');
+                                return inner ? `\n\n${inner}\n\n` : '';
+                            }
+
                             // All other tags (div, span, etc.): recurse, treat as inline
-                            return Array.from(elem.childNodes).map(domToMd).join('');
+                            return Array.from(elem.childNodes).map(n => domToMd(n)).join('');
                         }
 
-                        const md = domToMd(root)
+                        const md = domToMd(root as Node)
                             .replace(/\n{3,}/g, '\n\n')
                             .trim();
                         return md;
