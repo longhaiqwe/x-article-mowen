@@ -5,3 +5,8 @@ dist/
 *.log
 output-*.md
 debug-*.json
+
+/generated/prisma
+dev.db
+dev.db-journal
+

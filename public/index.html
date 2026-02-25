@@ -732,6 +732,112 @@
       font-size: 13px;
       color: var(--ink2);
     }
+
+    /* ── History Sidebar ── */
+    #history-sidebar {
+      position: fixed;
+      right: -360px;
+      top: 60px;
+      bottom: 0;
+      width: 360px;
+      background: rgba(244, 242, 238, .98);
+      backdrop-filter: blur(12px);
+      border-left: 1px solid var(--line2);
+      box-shadow: -4px 0 24px rgba(0, 0, 0, 0.05);
+      transition: right 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+      z-index: 100;
+      display: flex;
+      flex-direction: column;
+    }
+
+    #history-sidebar.open {
+      right: 0;
+    }
+
+    .hist-hd {
+      padding: 18px 24px;
+      border-bottom: 1px solid var(--line2);
+      font-family: var(--mono);
+      font-weight: 600;
+      font-size: 11px;
+      letter-spacing: .15em;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: var(--bg2);
+    }
+
+    .hist-close {
+      cursor: pointer;
+      padding: 4px;
+      color: var(--ink4);
+      transition: color .2s;
+    }
+
+    .hist-close:hover {
+      color: var(--rust);
+    }
+
+    .hist-list {
+      flex: 1;
+      overflow-y: auto;
+      padding: 16px;
+    }
+
+    .hist-item {
+      padding: 16px;
+      border-radius: var(--radius);
+      border: 1px solid var(--line);
+      background: var(--bg1);
+      cursor: pointer;
+      transition: all .2s;
+      margin-bottom: 12px;
+    }
+
+    .hist-item:hover {
+      border-color: var(--line2);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.03);
+      transform: translateY(-1px);
+    }
+
+    .hist-title {
+      font-family: var(--sans);
+      font-size: 13px;
+      font-weight: 500;
+      margin-bottom: 10px;
+      color: var(--ink);
+      line-height: 1.4;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+
+    .hist-meta {
+      font-family: var(--mono);
+      font-size: 10px;
+      color: var(--ink4);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .hist-status {
+      padding: 2px 6px;
+      border-radius: 3px;
+      background: var(--bg3);
+      letter-spacing: .05em;
+    }
+
+    .hist-status.COMPLETED {
+      background: var(--sage-bg);
+      color: var(--sage);
+    }
+
+    .hist-status.FAILED {
+      background: var(--rust-bg);
+      color: var(--rust);
+    }
   </style>
 </head>
 
@@ -742,10 +848,25 @@
     <div class="header-badge">DISPATCH</div>
     <div class="header-title">X Article → 墨问</div>
     <div class="header-status">
+      <button onclick="toggleHistory()"
+        style="margin-right:16px; background:transparent; border:1px solid var(--line2); border-radius:3px; padding:4px 10px; font-family:var(--mono); font-size:10px; font-weight:600; cursor:pointer; color:var(--ink3); transition:all .2s;"
+        onmouseover="this.style.color='var(--ink)'; this.style.borderColor='var(--ink3)'"
+        onmouseout="this.style.color='var(--ink3)'; this.style.borderColor='var(--line2)'">HISTORY</button>
       <div class="status-dot"></div>
       <span>ONLINE</span>
     </div>
   </header>
+
+  <!-- ── History Sidebar ── -->
+  <div id="history-sidebar">
+    <div class="hist-hd">
+      <span>DATABASE / HISTORY</span>
+      <div class="hist-close" onclick="toggleHistory()">✕</div>
+    </div>
+    <div class="hist-list" id="hist-list">
+      <div style="padding:20px; text-align:center; color:var(--ink4); font-size:11px;">Loading...</div>
+    </div>
+  </div>
 
   <!-- ── Main ── -->
   <div class="wrapper">
@@ -875,6 +996,99 @@
       final: ''
     };
 
+    // ── Database API Sync ──────────────────────────────
+    async function saveHistory(data) {
+      if (!data.url) return;
+      try {
+        await fetch('/api/history', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data)
+        });
+      } catch (err) {
+        console.error('Failed to sync history:', err);
+      }
+    }
+
+    let isHistoryOpen = false;
+    async function toggleHistory() {
+      isHistoryOpen = !isHistoryOpen;
+      const sidebar = document.getElementById('history-sidebar');
+      if (isHistoryOpen) {
+        sidebar.classList.add('open');
+        await loadHistory();
+      } else {
+        sidebar.classList.remove('open');
+      }
+    }
+
+    async function loadHistory() {
+      const listEl = document.getElementById('hist-list');
+      listEl.innerHTML = '<div style="padding:40px 20px; text-align:center; color:var(--ink4); font-size:11px;">Loading records...</div>';
+      try {
+        const res = await fetch('/api/history');
+        const records = await res.json();
+        listEl.innerHTML = '';
+        if (records.length === 0) {
+          listEl.innerHTML = '<div style="padding:40px 20px; text-align:center; color:var(--ink4); font-size:11px;">No records found.</div>';
+          return;
+        }
+        records.forEach(r => {
+          const div = document.createElement('div');
+          div.className = 'hist-item';
+          const d = new Date(r.updatedAt).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+          div.innerHTML = `
+            <div class="hist-title">${r.title || r.url}</div>
+            <div class="hist-meta">
+              <span>${d}</span>
+              <span class="hist-status ${r.status}">${r.status}</span>
+            </div>
+          `;
+          div.onclick = () => loadRecord(r);
+          listEl.appendChild(div);
+        });
+      } catch (e) {
+        listEl.innerHTML = `<div style="padding:40px 20px; text-align:center; color:var(--rust); font-size:11px;">Failed to load from database</div>`;
+      }
+    }
+
+    function loadRecord(r) {
+      document.getElementById('url-input').value = r.url;
+      currentUrl = r.url;
+      articleTitle = r.title || 'X Article';
+      originalMarkdown = r.originalContent || '';
+      finalMarkdown = r.translatedContent || '';
+
+      document.getElementById('pipeline').style.display = 'flex';
+
+      // Reset pipeline
+      ['scraping', 'draft', 'publishing'].forEach(s => document.getElementById('ps-' + s).className = 'pipe-step');
+      ['para', 'publishing'].forEach(id => {
+        const btn = document.getElementById('btn-' + id);
+        if (btn) { btn.className = 'pipe-btn'; btn.textContent = 'START'; }
+      });
+      document.getElementById('result-banner').className = 'result-banner';
+
+      if (originalMarkdown) {
+        setDone('scraping');
+        fillPanel('original', originalMarkdown, originalMarkdown.length);
+      }
+      if (finalMarkdown) {
+        setDone('draft');
+        setBtnDone('btn-para');
+        fillPanel('final', finalMarkdown, finalMarkdown.length);
+        document.getElementById('bd-draft').innerHTML = '<div class="placeholder"><div class="placeholder-text">Loaded from history database.</div></div>';
+        setReady('btn-publishing');
+      } else {
+        setReady('btn-para');
+        document.getElementById('bd-draft').innerHTML = '<div class="placeholder"><div class="placeholder-glyph">❒</div><div class="placeholder-text">Awaiting translation…</div></div>';
+        document.getElementById('bd-final').innerHTML = '<div class="placeholder"><div class="placeholder-glyph">❒</div><div class="placeholder-text">Awaiting refinement…</div></div>';
+      }
+
+      toggleHistory();
+      showResult(true, 'HISTORY RESTORED', `Restored record from database [Status: ${r.status}]`);
+    }
+
     // ── 工具函数 ─────────────────────────────────────────
     function setActive(n) { document.getElementById('ps-' + n).className = 'pipe-step active'; }
     function setDone(n) {
@@ -969,6 +1183,7 @@
         originalMarkdown = d.content;
         articleTitle = d.title || 'X Article';
         fillPanel('original', d.content, d.content.length);
+        saveHistory({ url: currentUrl, title: articleTitle, originalContent: originalMarkdown, status: 'EXTRACTING' });
       });
 
       currentSSE.addEventListener('done', () => {
@@ -981,6 +1196,7 @@
         let msg = 'Unknown error';
         try { msg = JSON.parse(e.data).message; } catch { }
         showResult(false, 'SCRAPE ERROR', msg);
+        saveHistory({ url: currentUrl, errorMessage: msg, status: 'FAILED' });
         closeSSE();
       });
 
@@ -1071,10 +1287,12 @@
             progressEl.textContent = '处理完成';
             progressEl.style.color = 'var(--sage)';
           }
+          saveHistory({ url: currentUrl, translatedContent: finalMarkdown, status: 'COMPLETED' });
         },
         error: (err) => {
           showResult(false, 'PARAGRAPH TRANSLATE ERROR', err.message);
           setBtnDone('btn-para');
+          saveHistory({ url: currentUrl, errorMessage: err.message, status: 'FAILED' });
         }
       });
     }

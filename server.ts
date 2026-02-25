@@ -7,6 +7,7 @@ import { XScraper } from './libs/scraper.js';
 import { Translator } from './libs/translator.js';
 import type { ModelConfig } from './libs/translator.js';
 import { MowenPublisher } from './libs/mowen.js';
+import { prisma } from './libs/db.js';
 
 dotenv.config();
 
@@ -314,6 +315,60 @@ const server = http.createServer(async (req, res) => {
         return;
     }
 
+    // ── Database History API ───────────────────────────────────────
+    if (pathname === '/api/history' && req.method === 'GET') {
+        try {
+            const records = await prisma.translationRecord.findMany({
+                orderBy: { updatedAt: 'desc' },
+                take: 50,
+            });
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify(records));
+        } catch (e) {
+            res.writeHead(500); res.end(JSON.stringify({ error: String(e) }));
+        }
+        return;
+    }
+
+    if (pathname === '/api/history' && req.method === 'POST') {
+        const body = await readBody(req);
+        const data = JSON.parse(body);
+        if (!data.url) { res.writeHead(400); res.end(JSON.stringify({ error: 'Missing url' })); return; }
+
+        try {
+            let record = await prisma.translationRecord.findFirst({ where: { url: data.url } });
+            if (record) {
+                record = await prisma.translationRecord.update({
+                    where: { id: record.id },
+                    data: {
+                        title: data.title !== undefined ? data.title : undefined,
+                        originalContent: data.originalContent !== undefined ? data.originalContent : undefined,
+                        translatedContent: data.translatedContent !== undefined ? data.translatedContent : undefined,
+                        status: data.status !== undefined ? data.status : undefined,
+                        errorMessage: data.errorMessage !== undefined ? data.errorMessage : undefined
+                    }
+                });
+            } else {
+                record = await prisma.translationRecord.create({
+                    data: {
+                        url: data.url,
+                        title: data.title,
+                        originalContent: data.originalContent,
+                        translatedContent: data.translatedContent,
+                        status: data.status || 'PENDING',
+                        errorMessage: data.errorMessage
+                    }
+                });
+            }
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify(record));
+        } catch (e) {
+            res.writeHead(500); res.end(JSON.stringify({ error: String(e) }));
+        }
+        return;
+    }
+
+    // ── 404 Fallback ────────────────────────────────────────────────
     res.writeHead(404);
     res.end('Not Found');
 });

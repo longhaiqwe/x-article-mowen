@@ -1,0 +1,24 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model TranslationRecord {
+  id                String   @id @default(uuid())
+  url               String
+  title             String?
+  author            String?
+  status            String   @default("PENDING") // PENDING, EXTRACTING, TRANSLATING, COMPLETED, FAILED
+  originalContent   String?
+  translatedContent String?
+  errorMessage      String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
