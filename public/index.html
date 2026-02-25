@@ -774,7 +774,8 @@
         <div class="pipe-num">02</div>
         <div class="pipe-spinner"></div>
         <div class="pipe-label">DRAFT</div>
-        <button class="pipe-btn" id="btn-draft" onclick="runDraft()">START</button>
+        <button class="pipe-btn" id="btn-draft" onclick="runDraft()" title="整篇初稿">START</button>
+        <button class="pipe-btn" id="btn-para" onclick="runParagraphTranslate()" title="逐段翻译">逐段</button>
       </div>
       <div class="pipe-step" id="ps-reviews">
         <div class="pipe-num">03</div>
@@ -894,11 +895,11 @@
   <script>
     // ── 状态 ────────────────────────────────────────────
     let currentUrl = '';
-    let originalMarkdown = '';  
-    let draftMarkdown = '';   
+    let originalMarkdown = '';
+    let draftMarkdown = '';
     let reviewsData = null;
     let synthesisMarkdown = '';
-    let finalMarkdown = '';   
+    let finalMarkdown = '';
     let articleTitle = 'X Article';
     let currentSSE = null;
     const streamBuf = {
@@ -965,11 +966,13 @@
       });
 
       // 重置面板和按钮
-      ['draft', 'reviews', 'synthesis', 'final', 'publishing'].forEach(id => {
+      ['draft', 'para', 'reviews', 'synthesis', 'final', 'publishing'].forEach(id => {
         const btn = document.getElementById('btn-' + id);
         if (btn) {
           btn.className = 'pipe-btn';
-          btn.textContent = 'START';
+          btn.textContent = id === 'para' ? '逐段' : 'START';
+          btn.style.opacity = '';
+          btn.style.pointerEvents = '';
         }
       });
       ['original', 'draft', 'reviews', 'final'].forEach(id => {
@@ -1005,7 +1008,8 @@
       currentSSE.addEventListener('done', () => {
         setDone('scraping');
         closeSSE();
-        setReady('btn-draft'); 
+        setReady('btn-draft');
+        setReady('btn-para');
       });
 
       currentSSE.addEventListener('error', e => {
@@ -1020,13 +1024,96 @@
 
     let reviewDOM = { fluency: null, accuracy: null, style: null };
 
+    function runParagraphTranslate() {
+      const btn = document.getElementById('btn-para');
+      if (btn.className !== 'pipe-btn ready') return;
+      setBtnRunning('btn-para');
+
+      const btnDraft = document.getElementById('btn-draft');
+      if (btnDraft) { btnDraft.style.opacity = '0.3'; btnDraft.style.pointerEvents = 'none'; }
+
+      setActive('draft');
+
+      document.getElementById('pnl-draft').classList.add('lit');
+      document.getElementById('pnl-reviews').classList.add('lit');
+      document.getElementById('pnl-final').classList.add('lit');
+
+      document.getElementById('bd-draft').innerHTML = '<div class="md" id="md-para"></div>';
+      document.getElementById('bd-reviews').innerHTML = '<div class="md" id="md-para-rev">等待开始...</div>';
+      document.getElementById('bd-final').innerHTML = '<div class="md" id="md-para-final">等待输出...</div>';
+
+      let currentParaBuf = '';
+      let currentFinalBuf = '';
+
+      listenSSE('/process/paragraph-translate', { markdown: originalMarkdown }, {
+        paragraph_start: (data) => {
+          const { index, total } = data;
+          document.getElementById('md-para-rev').innerHTML = marked.parse(`**逐段/块翻译进度**\n\n正在分析处理第 **${index + 1} / ${total}** 部分...\n\n---\n> 系统将执行直译、问题分析、意译三步骤`);
+
+          // 不再清空 currentParaBuf，而是追加段落分割线
+          if (index > 0) {
+            currentParaBuf += '\n\n---\n\n';
+          }
+          currentParaBuf += `**【第 ${index + 1} 部分处理过程】**\n\n`;
+
+          const mdEl = document.getElementById('md-para');
+          if (mdEl) mdEl.innerHTML = marked.parse(currentParaBuf);
+        },
+        paragraph_chunk: (data) => {
+          currentParaBuf += data.chunk;
+          const mdEl = document.getElementById('md-para');
+          if (mdEl) {
+            mdEl.innerHTML = marked.parse(currentParaBuf);
+            // 保持滚动到底部
+            const bdDraft = document.getElementById('bd-draft');
+            if (bdDraft) bdDraft.scrollTop = bdDraft.scrollHeight;
+          }
+        },
+        paragraph_complete: (data) => {
+          const { index, total, result } = data;
+          document.getElementById('md-para-rev').innerHTML = marked.parse(`**逐段/块翻译进度**\n\n已完成第 **${index + 1} / ${total}** 部分。`);
+          currentFinalBuf += result.freeTranslation + '\n\n';
+          const finalEl = document.getElementById('md-para-final');
+          if (finalEl) {
+            finalEl.innerHTML = marked.parse(currentFinalBuf);
+            // 自动滚动到最底部
+            const bdFinal = document.getElementById('bd-final');
+            if (bdFinal) bdFinal.scrollTop = bdFinal.scrollHeight;
+          }
+          document.getElementById('ch-final').textContent = currentFinalBuf.length.toLocaleString() + ' ch';
+
+          // 同时也让 draft 面板保持滚动到底部
+          const bdDraft = document.getElementById('bd-draft');
+          if (bdDraft) bdDraft.scrollTop = bdDraft.scrollHeight;
+        },
+        final_article: (data) => {
+          finalMarkdown = data.content;
+          currentFinalBuf = finalMarkdown;
+          const finalEl = document.getElementById('md-para-final');
+          if (finalEl) finalEl.innerHTML = marked.parse(finalMarkdown);
+        },
+        done: () => {
+          setDone('draft');
+          setDone('reviews');
+          setDone('synthesis');
+          setDone('final');
+          setBtnDone('btn-para');
+          setReady('btn-publishing');
+        },
+        error: (err) => {
+          showResult(false, 'PARAGRAPH TRANSLATE ERROR', err.message);
+          setBtnDone('btn-para');
+        }
+      });
+    }
+
     // ── 分步 Pipeline ──────────────────────────
     function runDraft() {
       const btn = document.getElementById('btn-draft');
       if (btn.className !== 'pipe-btn ready') return;
       setBtnRunning('btn-draft');
       setActive('draft');
-      
+
       listenSSE('/process/draft', { markdown: originalMarkdown }, {
         stage_chunk: (data) => {
           const { chunk } = data;
@@ -1051,7 +1138,7 @@
       if (btn.className !== 'pipe-btn ready') return;
       setBtnRunning('btn-reviews');
       setActive('reviews');
-      
+
       const revPanel = document.getElementById('pnl-reviews');
       revPanel.classList.add('lit');
       const placeholder = document.getElementById('placeholder-reviews');

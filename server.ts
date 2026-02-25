@@ -158,6 +158,28 @@ async function handleFinalPolish(synth: string, res: http.ServerResponse) {
     }
 }
 
+// ── Step 4.5 (Alternative): Paragraph Translate ──────────────────────────
+async function handleParagraphTranslate(markdown: string, res: http.ServerResponse) {
+    initSSE(res);
+    try {
+        sendEvent(res, 'status', { message: '开始逐段分析与翻译...' });
+        const translator = new Translator(ARK_API_KEY, ARK_BASE_URL, ARK_MODELS);
+
+        const result = await translator.translateByParagraphs(
+            markdown,
+            (event, data) => sendEvent(res, event, data),
+            (index, step, chunk) => sendEvent(res, 'paragraph_chunk', { index, step, chunk })
+        );
+
+        sendEvent(res, 'stage_complete', { stage: 'paragraph_translate', content: result.finalArticle });
+        sendEvent(res, 'done', { message: '逐段翻译完成' });
+    } catch (e) {
+        sendEvent(res, 'error', { message: `逐段翻译失败：${(e as Error).message}` });
+    } finally {
+        res.end();
+    }
+}
+
 // ── Step 4: Publish ─────────────────────────────────────────────
 async function handlePublish(title: string, markdown: string, res: http.ServerResponse) {
     initSSE(res);
@@ -246,6 +268,15 @@ const server = http.createServer(async (req, res) => {
         const { synthesis } = JSON.parse(body);
         if (!synthesis) { res.writeHead(400); res.end(JSON.stringify({ error: 'Missing synthesis payload' })); return; }
         await handleFinalPolish(synthesis, res);
+        return;
+    }
+
+    // Step 5.5: POST /process/paragraph-translate
+    if (pathname === '/process/paragraph-translate' && req.method === 'POST') {
+        const body = await readBody(req);
+        const { markdown } = JSON.parse(body);
+        if (!markdown) { res.writeHead(400); res.end(JSON.stringify({ error: 'Missing markdown payload' })); return; }
+        await handleParagraphTranslate(markdown, res);
         return;
     }
 
