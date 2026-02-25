@@ -1,0 +1,61 @@
+{
+  "body": {
+    "type": "doc",
+    "content": [
+      {
+        "type": "heading",
+        "attrs": {
+          "level": "1"
+        },
+        "content": [
+          {
+            "type": "text",
+            "text": "人类3.0 - 一张通往前1%的地图"
+          }
+        ]
+      },
+      {
+        "type": "image",
+        "attrs": {
+          "uuid": "https://pbs.twimg.com/media/HBUzlGwbcAUboWU?format=jpg&name=small",
+          "alt": "图像",
+          "align": "center"
+        }
+      },
+      {
+        "type": "paragraph",
+        "content": [
+          {
+            "type": "text",
+            "text": "这听起来或许有些老生常谈，但我一直渴望成为"
+          },
+          {
+            "type": "text",
+            "text": "全方位卓越",
+            "marks": [
+              {
+                "type": "bold"
+              }
+            ]
+          },
+          {
+            "type": "text",
+            "text": "的人。"
+          }
+        ]
+      },
+      {
+        "type": "paragraph",
+        "content": [
+          {
+            "type": "text",
+            "text": "这不仅意味着拥有健美的体魄，更是在人生的各个维度上实现全面发展。我希望将自己的潜能发挥到极致，不愿做一个随波逐流的\"NPC\"（非玩家角色），而要成为那个满级的顶级玩家。"
+          }
+        ]
+      }
+    ]
+  },
+  "settings": {
+    "autoPublish": true
+  }
+}
