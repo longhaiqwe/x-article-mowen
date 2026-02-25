@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>DISPATCH // X→墨问 情报转译系统</title>
+  <title>DISPATCH // X→墨问</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link
     href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=IBM+Plex+Mono:wght@300;400;500;600&family=Space+Grotesk:wght@300;400;500;600&display=swap"
@@ -741,7 +741,6 @@
   <header>
     <div class="header-badge">DISPATCH</div>
     <div class="header-title">X Article → 墨问</div>
-    <div class="header-subtitle">// 情报转译系统 v1.0</div>
     <div class="header-status">
       <div class="status-dot"></div>
       <span>ONLINE</span>
@@ -773,37 +772,13 @@
       <div class="pipe-step" id="ps-draft">
         <div class="pipe-num">02</div>
         <div class="pipe-spinner"></div>
-        <div class="pipe-label" style="display:flex; align-items:center; gap:8px;">
-          DRAFT
-          <select id="draft-backend"
-            style="font-size:10px; background:transparent; border:1px solid var(--line2); border-radius:3px; color:var(--ink3); padding:2px">
-            <option value="cloud">Cloud (DeepSeek)</option>
-            <option value="ollama">Local (TranslateGemma)</option>
-          </select>
-        </div>
-        <button class="pipe-btn" id="btn-draft" onclick="runDraft()" title="整篇初稿">START</button>
-        <button class="pipe-btn" id="btn-para" onclick="runParagraphTranslate()" title="逐段翻译">逐段</button>
-      </div>
-      <div class="pipe-step" id="ps-reviews">
-        <div class="pipe-num">03</div>
-        <div class="pipe-spinner"></div>
-        <div class="pipe-label">REVIEW (x3)</div>
-        <button class="pipe-btn" id="btn-reviews" onclick="runReviews()">START</button>
-      </div>
-      <div class="pipe-step" id="ps-synthesis">
-        <div class="pipe-num">04</div>
-        <div class="pipe-spinner"></div>
-        <div class="pipe-label">SYNTHESIS</div>
-        <button class="pipe-btn" id="btn-synthesis" onclick="runSynthesis()">START</button>
-      </div>
-      <div class="pipe-step" id="ps-final">
-        <div class="pipe-num">05</div>
-        <div class="pipe-spinner"></div>
-        <div class="pipe-label">FINAL POLISH</div>
-        <button class="pipe-btn" id="btn-final" onclick="runFinal()">START</button>
+        <div class="pipe-label">DRAFT</div>
+        <button class="pipe-btn" id="btn-para" onclick="runParagraphTranslate()" title="逐段翻译">START</button>
+        <span id="draft-progress"
+          style="font-size:11px; color:var(--rust); margin-left:8px; font-weight:600; display:none; white-space:nowrap;"></span>
       </div>
       <div class="pipe-step" id="ps-publishing">
-        <div class="pipe-num">06</div>
+        <div class="pipe-num">03</div>
         <div class="pipe-spinner"></div>
         <div class="pipe-label">PUBLISH</div>
         <button class="pipe-btn" id="btn-publishing" onclick="runPublish()">START</button>
@@ -846,24 +821,6 @@
           <div class="placeholder">
             <div class="placeholder-glyph">❒</div>
             <div class="placeholder-text">Awaiting translation…</div>
-          </div>
-        </div>
-      </div>
-
-      <div class="panel" id="pnl-reviews">
-        <div class="panel-hd">
-          <div class="panel-dots">
-            <div class="panel-dot"></div>
-            <div class="panel-dot"></div>
-            <div class="panel-dot"></div>
-          </div>
-          <div class="panel-tag">评审意见 / REVIEWS</div>
-          <div class="panel-chars" id="ch-reviews"></div>
-        </div>
-        <div class="panel-body" id="bd-reviews" style="display:flex; flex-direction:column; gap:16px;">
-          <div class="placeholder" id="placeholder-reviews">
-            <div class="placeholder-glyph">❒</div>
-            <div class="placeholder-text">Awaiting reviews…</div>
           </div>
         </div>
       </div>
@@ -968,26 +925,28 @@
       document.getElementById('pipeline').style.display = 'flex';
 
       // 重置 pipe 步骤样式
-      ['scraping', 'draft', 'reviews', 'synthesis', 'final', 'publishing'].forEach(s => {
+      ['scraping', 'draft', 'publishing'].forEach(s => {
         document.getElementById('ps-' + s).className = 'pipe-step';
       });
 
       // 重置面板和按钮
-      ['draft', 'para', 'reviews', 'synthesis', 'final', 'publishing'].forEach(id => {
+      ['para', 'publishing'].forEach(id => {
         const btn = document.getElementById('btn-' + id);
         if (btn) {
           btn.className = 'pipe-btn';
-          btn.textContent = id === 'para' ? '逐段' : 'START';
+          btn.textContent = 'START';
           btn.style.opacity = '';
           btn.style.pointerEvents = '';
         }
       });
-      ['original', 'draft', 'reviews', 'final'].forEach(id => {
+      const progressEl = document.getElementById('draft-progress');
+      if (progressEl) { progressEl.style.display = 'none'; progressEl.textContent = ''; progressEl.style.color = 'var(--rust)'; }
+      ['original', 'draft', 'final'].forEach(id => {
         const pnl = document.getElementById('pnl-' + id);
         if (pnl) {
           pnl.classList.remove('lit');
           document.getElementById('ch-' + id).textContent = '';
-          const labels = { original: 'Awaiting scrape…', draft: 'Awaiting draft…', reviews: 'Awaiting reviews…', final: 'Awaiting final polish…' };
+          const labels = { original: 'Awaiting scrape…', draft: 'Awaiting draft…', final: 'Awaiting translation…' };
           document.getElementById('bd-' + id).innerHTML =
             `<div class="placeholder"><div class="placeholder-glyph">❒</div><div class="placeholder-text">${labels[id]}</div></div>`;
         }
@@ -1015,7 +974,6 @@
       currentSSE.addEventListener('done', () => {
         setDone('scraping');
         closeSSE();
-        setReady('btn-draft');
         setReady('btn-para');
       });
 
@@ -1036,27 +994,30 @@
       if (btn.className !== 'pipe-btn ready') return;
       setBtnRunning('btn-para');
 
-      const btnDraft = document.getElementById('btn-draft');
-      if (btnDraft) { btnDraft.style.opacity = '0.3'; btnDraft.style.pointerEvents = 'none'; }
-
       setActive('draft');
 
       document.getElementById('pnl-draft').classList.add('lit');
-      document.getElementById('pnl-reviews').classList.add('lit');
       document.getElementById('pnl-final').classList.add('lit');
 
       document.getElementById('bd-draft').innerHTML = '<div class="md" id="md-para"></div>';
-      document.getElementById('bd-reviews').innerHTML = '<div class="md" id="md-para-rev">等待开始...</div>';
       document.getElementById('bd-final').innerHTML = '<div class="md" id="md-para-final">等待输出...</div>';
+
+      const progressEl = document.getElementById('draft-progress');
+      if (progressEl) {
+        progressEl.style.display = 'inline-block';
+        progressEl.textContent = '初始化...';
+        progressEl.style.color = 'var(--rust)';
+      }
 
       let currentParaBuf = '';
       let currentFinalBuf = '';
-      const selectedBackend = document.getElementById('draft-backend') ? document.getElementById('draft-backend').value : 'cloud';
+      const selectedBackend = 'ollama';
 
       listenSSE('/process/paragraph-translate', { markdown: originalMarkdown, backend: selectedBackend }, {
         paragraph_start: (data) => {
           const { index, total } = data;
-          document.getElementById('md-para-rev').innerHTML = marked.parse(`**逐段/块翻译进度**\n\n正在分析处理第 **${index + 1} / ${total}** 部分...\n\n---\n> 系统将执行直译、问题分析、意译三步骤`);
+          const progressEl = document.getElementById('draft-progress');
+          if (progressEl) progressEl.textContent = `正在分析处理第 ${index + 1} / ${total} 部分...`;
 
           // 不再清空 currentParaBuf，而是追加段落分割线
           if (index > 0) {
@@ -1079,7 +1040,8 @@
         },
         paragraph_complete: (data) => {
           const { index, total, result } = data;
-          document.getElementById('md-para-rev').innerHTML = marked.parse(`**逐段/块翻译进度**\n\n已完成第 **${index + 1} / ${total}** 部分。`);
+          const progressEl = document.getElementById('draft-progress');
+          if (progressEl) progressEl.textContent = `已完成第 ${index + 1} / ${total} 部分...`;
           currentFinalBuf += result.freeTranslation + '\n\n';
           const finalEl = document.getElementById('md-para-final');
           if (finalEl) {
@@ -1102,117 +1064,18 @@
         },
         done: () => {
           setDone('draft');
-          setDone('reviews');
-          setDone('synthesis');
-          setDone('final');
           setBtnDone('btn-para');
           setReady('btn-publishing');
+          const progressEl = document.getElementById('draft-progress');
+          if (progressEl) {
+            progressEl.textContent = '处理完成';
+            progressEl.style.color = 'var(--sage)';
+          }
         },
         error: (err) => {
           showResult(false, 'PARAGRAPH TRANSLATE ERROR', err.message);
           setBtnDone('btn-para');
         }
-      });
-    }
-
-    // ── 分步 Pipeline ──────────────────────────
-    function runDraft() {
-      const btn = document.getElementById('btn-draft');
-      if (btn.className !== 'pipe-btn ready') return;
-      setBtnRunning('btn-draft');
-      setActive('draft');
-
-      listenSSE('/process/draft', { markdown: originalMarkdown }, {
-        stage_chunk: (data) => {
-          const { chunk } = data;
-          streamBuf.draft += chunk;
-          if (!document.getElementById('md-draft')) {
-            document.getElementById('pnl-draft').classList.add('lit');
-            document.getElementById('bd-draft').innerHTML = '<div class="md" id="md-draft"></div>';
-          }
-          document.getElementById('md-draft').innerHTML = marked.parse(streamBuf.draft);
-          document.getElementById('ch-draft').textContent = streamBuf.draft.length.toLocaleString() + ' ch';
-        },
-        stage_complete: (data) => { draftMarkdown = data.content; },
-        done: () => {
-          setDone('draft'); setBtnDone('btn-draft'); setReady('btn-reviews');
-        },
-        error: (err) => { showResult(false, 'DRAFT ERROR', err.message); setBtnDone('btn-draft'); }
-      });
-    }
-
-    function runReviews() {
-      const btn = document.getElementById('btn-reviews');
-      if (btn.className !== 'pipe-btn ready') return;
-      setBtnRunning('btn-reviews');
-      setActive('reviews');
-
-      const revPanel = document.getElementById('pnl-reviews');
-      revPanel.classList.add('lit');
-      const placeholder = document.getElementById('placeholder-reviews');
-      if (placeholder) placeholder.remove();
-
-      listenSSE('/process/review', { original: originalMarkdown, draft: draftMarkdown }, {
-        stage_chunk: (data) => {
-          const { stage, chunk } = data;
-          streamBuf[stage] += chunk;
-          const rType = stage.split('_')[1];
-          if (!reviewDOM[rType]) {
-            const bd = document.getElementById('bd-reviews');
-            if (bd.querySelector('.placeholder')) bd.innerHTML = '';
-            bd.innerHTML += `<div class="md" style="font-size:12px; background:var(--bg2); padding:10px; border-radius:4px" id="md-rev-${rType}"><strong>${rType.toUpperCase()}</strong><br/></div>`;
-            reviewDOM[rType] = true;
-          }
-          document.getElementById('md-rev-' + rType).innerHTML = marked.parse('**' + rType.toUpperCase() + ' Review**\n\n' + streamBuf[stage]);
-        },
-        stage_complete: (data) => { reviewsData = data.content; },
-        done: () => {
-          setDone('reviews'); setBtnDone('btn-reviews'); setReady('btn-synthesis');
-        },
-        error: (err) => { showResult(false, 'REVIEW ERROR', err.message); setBtnDone('btn-reviews'); }
-      });
-    }
-
-    function runSynthesis() {
-      const btn = document.getElementById('btn-synthesis');
-      if (btn.className !== 'pipe-btn ready') return;
-      setBtnRunning('btn-synthesis');
-      setActive('synthesis');
-
-      listenSSE('/process/synthesis', { original: originalMarkdown, draft: draftMarkdown, reviews: reviewsData }, {
-        stage_chunk: (data) => {
-          // No visual panel for synthesis yet, but we receive it in streamBuf.synthesis if needed
-          streamBuf.synthesis += data.chunk;
-        },
-        stage_complete: (data) => { synthesisMarkdown = data.content; },
-        done: () => {
-          setDone('synthesis'); setBtnDone('btn-synthesis'); setReady('btn-final');
-        },
-        error: (err) => { showResult(false, 'SYNTHESIS ERROR', err.message); setBtnDone('btn-synthesis'); }
-      });
-    }
-
-    function runFinal() {
-      const btn = document.getElementById('btn-final');
-      if (btn.className !== 'pipe-btn ready') return;
-      setBtnRunning('btn-final');
-      setActive('final');
-
-      listenSSE('/process/final', { synthesis: synthesisMarkdown }, {
-        stage_chunk: (data) => {
-          streamBuf.final += data.chunk;
-          if (!document.getElementById('md-final')) {
-            document.getElementById('pnl-final').classList.add('lit');
-            document.getElementById('bd-final').innerHTML = '<div class="md" id="md-final"></div>';
-          }
-          document.getElementById('md-final').innerHTML = marked.parse(streamBuf.final);
-          document.getElementById('ch-final').textContent = streamBuf.final.length.toLocaleString() + ' ch';
-        },
-        stage_complete: (data) => { finalMarkdown = data.content; },
-        done: () => {
-          setDone('final'); setBtnDone('btn-final'); setReady('btn-publishing');
-        },
-        error: (err) => { showResult(false, 'FINAL POLISH ERROR', err.message); setBtnDone('btn-final'); }
       });
     }
 
