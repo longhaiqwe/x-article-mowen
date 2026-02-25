@@ -1,613 +1,921 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
+
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>X Article → 墨问 ✦ 翻译发布工具</title>
+  <title>DISPATCH // X→墨问 情报转译系统</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link
+    href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=IBM+Plex+Mono:wght@300;400;500;600&family=Space+Grotesk:wght@300;400;500;600&display=swap"
+    rel="stylesheet" />
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    *,
+    *::before,
+    *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
 
     :root {
-      --bg: #0d0f14;
-      --surface: #13161f;
-      --surface2: #1a1e2a;
-      --border: #252a38;
-      --border-active: #3d4460;
-      --accent: #6c8ef5;
-      --accent2: #a78bfa;
-      --accent3: #34d399;
-      --text: #e2e8f0;
-      --text-muted: #64748b;
-      --text-dim: #94a3b8;
-      --error: #f87171;
-      --warning: #fbbf24;
-      --radius: 12px;
-      --radius-sm: 8px;
+      /* 亮色背景层次 */
+      --bg: #f4f2ee;
+      --bg1: #ffffff;
+      --bg2: #f8f7f4;
+      --bg3: #ede9e3;
+
+      /* 主色：铁墨黑 */
+      --ink: #1a1a1a;
+      --ink2: #3d3d3d;
+      --ink3: #6b6b6b;
+      --ink4: #a0a0a0;
+
+      /* 强调色：赭石红 */
+      --rust: #c0472a;
+      --rust2: #e05a38;
+      --rust-bg: rgba(192, 71, 42, .07);
+      --rust-bdr: rgba(192, 71, 42, .2);
+
+      /* 绿 */
+      --sage: #2a7e5c;
+      --sage-bg: rgba(42, 126, 92, .08);
+      --sage-bdr: rgba(42, 126, 92, .25);
+
+      /* 边框 */
+      --line: #dcd8d1;
+      --line2: #c8c2ba;
+
+      --radius: 6px;
+      --mono: 'IBM Plex Mono', monospace;
+      --serif: 'DM Serif Display', serif;
+      --sans: 'Space Grotesk', sans-serif;
+    }
+
+    html {
+      scroll-behavior: smooth;
     }
 
     body {
-      font-family: 'Inter', sans-serif;
+      font-family: var(--mono);
       background: var(--bg);
-      color: var(--text);
+      color: var(--ink);
       min-height: 100vh;
       line-height: 1.6;
     }
 
+    /* 顶部装饰条 */
+    body::before {
+      content: '';
+      display: block;
+      height: 3px;
+      background: repeating-linear-gradient(90deg,
+          var(--rust) 0px, var(--rust) 20px,
+          var(--ink) 20px, var(--ink) 40px,
+          var(--bg3) 40px, var(--bg3) 48px);
+    }
+
     /* ── Header ── */
     header {
-      padding: 24px 32px;
-      border-bottom: 1px solid var(--border);
-      background: rgba(13,15,20,.8);
-      backdrop-filter: blur(12px);
       position: sticky;
-      top: 0;
-      z-index: 100;
+      top: 3px;
+      z-index: 50;
+      background: rgba(244, 242, 238, .95);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--line2);
+      padding: 0 40px;
       display: flex;
       align-items: center;
-      gap: 16px;
-    }
-
-    .logo {
-      font-size: 22px;
-      font-weight: 700;
-      background: linear-gradient(135deg, var(--accent), var(--accent2));
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      background-clip: text;
-      letter-spacing: -0.5px;
-    }
-
-    .logo-sep { color: var(--border-active); font-weight: 300; }
-    .logo-sub { font-size: 13px; color: var(--text-muted); font-weight: 400; }
-
-    /* ── Main Layout ── */
-    .container {
-      max-width: 1400px;
-      margin: 0 auto;
-      padding: 32px 24px;
-    }
-
-    /* ── Input Section ── */
-    .input-section {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      padding: 28px;
-      margin-bottom: 32px;
-      transition: border-color .2s;
-    }
-
-    .input-section:focus-within {
-      border-color: var(--border-active);
-    }
-
-    .input-label {
-      font-size: 13px;
-      font-weight: 600;
-      color: var(--text-muted);
-      text-transform: uppercase;
-      letter-spacing: .08em;
-      margin-bottom: 12px;
-    }
-
-    .input-row {
-      display: flex;
-      gap: 12px;
-    }
-
-    #url-input {
-      flex: 1;
-      background: var(--surface2);
-      border: 1px solid var(--border);
-      border-radius: var(--radius-sm);
-      padding: 12px 16px;
-      color: var(--text);
-      font-family: 'JetBrains Mono', monospace;
-      font-size: 14px;
-      outline: none;
-      transition: border-color .2s, box-shadow .2s;
-    }
-
-    #url-input:focus {
-      border-color: var(--accent);
-      box-shadow: 0 0 0 3px rgba(108,142,245,.1);
-    }
-
-    #url-input::placeholder { color: var(--text-muted); }
-
-    #start-btn {
-      padding: 12px 28px;
-      background: linear-gradient(135deg, var(--accent), var(--accent2));
-      border: none;
-      border-radius: var(--radius-sm);
-      color: white;
-      font-family: 'Inter', sans-serif;
-      font-size: 14px;
-      font-weight: 600;
-      cursor: pointer;
-      transition: opacity .2s, transform .15s;
-      white-space: nowrap;
-    }
-
-    #start-btn:hover:not(:disabled) { opacity: .88; transform: translateY(-1px); }
-    #start-btn:active:not(:disabled) { transform: translateY(0); }
-    #start-btn:disabled { opacity: .4; cursor: not-allowed; }
-
-    /* ── Progress Bar ── */
-    .progress-section {
-      display: none;
-      margin-bottom: 28px;
-    }
-
-    .progress-section.visible { display: block; }
-
-    .progress-steps {
-      display: flex;
-      gap: 0;
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      overflow: hidden;
-    }
-
-    .step {
-      flex: 1;
-      padding: 14px 16px;
-      text-align: center;
-      font-size: 13px;
-      font-weight: 500;
-      color: var(--text-muted);
-      position: relative;
-      transition: background .3s, color .3s;
-      border-right: 1px solid var(--border);
-    }
-
-    .step:last-child { border-right: none; }
-
-    .step.active {
-      background: rgba(108,142,245,.08);
-      color: var(--accent);
-    }
-
-    .step.done {
-      background: rgba(52,211,153,.06);
-      color: var(--accent3);
-    }
-
-    .step-icon { margin-right: 6px; }
-
-    .step-spinner {
-      display: inline-block;
-      width: 12px;
-      height: 12px;
-      border: 2px solid rgba(108,142,245,.3);
-      border-top-color: var(--accent);
-      border-radius: 50%;
-      animation: spin .8s linear infinite;
-      vertical-align: middle;
-      margin-right: 6px;
-    }
-
-    @keyframes spin { to { transform: rotate(360deg); } }
-
-    /* ── Content Grid ── */
-    .content-grid {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
+      height: 60px;
       gap: 20px;
     }
 
-    @media (max-width: 1100px) {
-      .content-grid { grid-template-columns: 1fr; }
+    .header-badge {
+      font-family: var(--mono);
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: .18em;
+      color: var(--bg1);
+      background: var(--ink);
+      padding: 4px 10px;
+      border-radius: 2px;
     }
 
-    .panel {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      overflow: hidden;
+    .header-title {
+      font-family: var(--serif);
+      font-size: 20px;
+      color: var(--ink);
+    }
+
+    .header-subtitle {
+      font-size: 11px;
+      color: var(--ink4);
+      letter-spacing: .07em;
+    }
+
+    .header-status {
+      margin-left: auto;
+      font-size: 11px;
+      color: var(--ink3);
       display: flex;
-      flex-direction: column;
-      min-height: 400px;
-      transition: border-color .3s;
+      align-items: center;
+      gap: 7px;
     }
 
-    .panel.has-content {
-      border-color: var(--border-active);
+    .status-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--sage);
+      box-shadow: 0 0 0 2px var(--sage-bg);
+      animation: pulse 2.4s ease-in-out infinite;
     }
 
-    .panel-header {
-      padding: 16px 20px;
-      border-bottom: 1px solid var(--border);
+    @keyframes pulse {
+
+      0%,
+      100% {
+        opacity: 1
+      }
+
+      50% {
+        opacity: .4
+      }
+    }
+
+    /* ── Layout ── */
+    .wrapper {
+      max-width: 1560px;
+      margin: 0 auto;
+      padding: 36px 40px 80px;
+    }
+
+    /* Section label */
+    .section-label {
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: .2em;
+      text-transform: uppercase;
+      color: var(--ink4);
+      margin-bottom: 12px;
       display: flex;
       align-items: center;
       gap: 10px;
     }
 
-    .panel-badge {
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      background: var(--border-active);
+    .section-label::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: var(--line);
+    }
+
+    /* ── Input Block ── */
+    .input-block {
+      background: var(--bg1);
+      border: 1px solid var(--line2);
+      border-top: 2px solid var(--ink);
+      border-radius: var(--radius);
+      padding: 24px 28px;
+      margin-bottom: 28px;
+      position: relative;
+    }
+
+    .input-corner {
+      position: absolute;
+      font-size: 9px;
+      font-weight: 600;
+      letter-spacing: .15em;
+      color: var(--ink4);
+      top: 8px;
+      right: 14px;
+      text-transform: uppercase;
+    }
+
+    .input-row {
+      display: flex;
+      gap: 0;
+    }
+
+    .input-prefix {
+      display: flex;
+      align-items: center;
+      padding: 0 14px;
+      background: var(--bg2);
+      border: 1px solid var(--line2);
+      border-right: none;
+      border-radius: var(--radius) 0 0 var(--radius);
+      font-size: 12px;
+      color: var(--rust);
+      font-weight: 500;
+      white-space: nowrap;
+      user-select: none;
+    }
+
+    #url-input {
+      flex: 1;
+      background: var(--bg2);
+      border: 1px solid var(--line2);
+      border-right: none;
+      border-radius: 0;
+      padding: 12px 16px;
+      color: var(--ink);
+      font-family: var(--mono);
+      font-size: 13px;
+      outline: none;
+      transition: border-color .2s, background .2s;
+    }
+
+    #url-input:focus {
+      background: var(--bg1);
+      border-color: var(--ink3);
+    }
+
+    #url-input::placeholder {
+      color: var(--ink4);
+    }
+
+    #start-btn {
+      padding: 0 24px;
+      background: var(--ink);
+      border: 1px solid var(--ink);
+      border-radius: 0 var(--radius) var(--radius) 0;
+      color: var(--bg1);
+      font-family: var(--mono);
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: .08em;
+      cursor: pointer;
+      transition: background .2s;
+      white-space: nowrap;
+      text-transform: uppercase;
+    }
+
+    #start-btn:hover:not(:disabled) {
+      background: var(--ink2);
+    }
+
+    #start-btn:disabled {
+      opacity: .35;
+      cursor: not-allowed;
+    }
+
+    /* ── Pipeline ── */
+    .pipeline {
+      display: none;
+      margin-bottom: 28px;
+      background: var(--bg1);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      overflow: hidden;
+    }
+
+    .pipeline.visible {
+      display: flex;
+    }
+
+    .pipe-step {
+      flex: 1;
+      padding: 14px 18px;
+      border-right: 1px solid var(--line);
+      display: flex;
+      align-items: center;
+      gap: 10px;
       transition: background .3s;
+      position: relative;
+    }
+
+    .pipe-step:last-child {
+      border-right: none;
+    }
+
+    .pipe-step::after {
+      content: '›';
+      position: absolute;
+      right: 0;
+      top: 50%;
+      transform: translateY(-50%) translateX(50%);
+      font-size: 14px;
+      color: var(--line2);
+      z-index: 1;
+      background: var(--bg1);
+      width: 12px;
+      text-align: center;
+    }
+
+    .pipe-step:last-child::after {
+      display: none;
+    }
+
+    .pipe-step.active {
+      background: #fef9f0;
+    }
+
+    .pipe-step.done {
+      background: #f1f9f5;
+    }
+
+    .pipe-num {
+      font-size: 10px;
+      font-weight: 600;
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      border: 1.5px solid var(--line2);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--ink4);
+      flex-shrink: 0;
+      transition: all .3s;
+    }
+
+    .pipe-step.active .pipe-num {
+      border-color: var(--rust);
+      color: var(--rust);
+    }
+
+    .pipe-step.done .pipe-num {
+      border-color: var(--sage);
+      background: var(--sage);
+      color: white;
+      font-size: 11px;
+    }
+
+    .pipe-label {
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--ink4);
+      letter-spacing: .05em;
+      transition: color .3s;
+    }
+
+    .pipe-step.active .pipe-label {
+      color: var(--rust);
+    }
+
+    .pipe-step.done .pipe-label {
+      color: var(--sage);
+    }
+
+    .pipe-spinner {
+      display: none;
+      width: 13px;
+      height: 13px;
+      border: 1.5px solid rgba(192, 71, 42, .2);
+      border-top-color: var(--rust);
+      border-radius: 50%;
+      animation: spin .7s linear infinite;
       flex-shrink: 0;
     }
 
-    .panel.has-content .panel-badge { background: var(--accent3); }
+    .pipe-step.active .pipe-spinner {
+      display: block;
+    }
 
-    .panel-title {
-      font-size: 13px;
+    @keyframes spin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+
+    /* ── Grid ── */
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
+    }
+
+    @media (max-width: 1100px) {
+      .grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    /* ── Panel ── */
+    .panel {
+      background: var(--bg1);
+      border: 1px solid var(--line);
+      border-top: 2px solid var(--line2);
+      border-radius: var(--radius);
+      display: flex;
+      flex-direction: column;
+      min-height: 440px;
+      max-height: 80vh;
+      overflow: hidden;
+      transition: border-color .4s, box-shadow .4s;
+    }
+
+    .panel.lit {
+      border-top-color: var(--rust);
+      box-shadow: 0 4px 24px rgba(0, 0, 0, .07);
+    }
+
+    /* Panel header */
+    .panel-hd {
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--line);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: var(--bg2);
+      flex-shrink: 0;
+    }
+
+    .panel-dots {
+      display: flex;
+      gap: 5px;
+      flex-shrink: 0;
+    }
+
+    .panel-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--line2);
+      transition: background .4s;
+    }
+
+    .panel.lit .panel-dot:nth-child(1) {
+      background: #e05c5c;
+    }
+
+    .panel.lit .panel-dot:nth-child(2) {
+      background: #d4a500;
+    }
+
+    .panel.lit .panel-dot:nth-child(3) {
+      background: #2aaa6e;
+    }
+
+    .panel-tag {
+      font-size: 10px;
       font-weight: 600;
-      color: var(--text-dim);
+      letter-spacing: .12em;
       text-transform: uppercase;
-      letter-spacing: .06em;
+      color: var(--ink4);
+      transition: color .4s;
     }
 
-    .panel-meta {
+    .panel.lit .panel-tag {
+      color: var(--rust);
+    }
+
+    .panel-chars {
       margin-left: auto;
-      font-size: 12px;
-      color: var(--text-muted);
+      font-size: 10px;
+      color: var(--ink4);
     }
 
+    /* Panel body */
     .panel-body {
-      padding: 20px;
       flex: 1;
       overflow-y: auto;
-      max-height: 70vh;
+      padding: 20px;
+      position: relative;
     }
 
-    .panel-placeholder {
+    .panel-body::-webkit-scrollbar {
+      width: 4px;
+    }
+
+    .panel-body::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    .panel-body::-webkit-scrollbar-thumb {
+      background: var(--line2);
+      border-radius: 2px;
+    }
+
+    /* Placeholder */
+    .placeholder {
+      position: absolute;
+      inset: 0;
       display: flex;
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      height: 100%;
-      min-height: 200px;
-      color: var(--text-muted);
-      font-size: 13px;
-      gap: 8px;
+      gap: 10px;
+      color: var(--ink4);
     }
 
-    .panel-placeholder-icon { font-size: 28px; opacity: .4; }
+    .placeholder-glyph {
+      font-family: var(--serif);
+      font-size: 32px;
+      color: var(--line2);
+      line-height: 1;
+    }
 
-    /* ── Markdown Rendering ── */
-    .md-content { font-size: 14px; line-height: 1.8; color: var(--text-dim); }
-    .md-content h1, .md-content h2, .md-content h3 {
-      color: var(--text);
-      margin: 1.2em 0 .5em;
+    .placeholder-text {
+      font-size: 11px;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+      color: var(--ink4);
+    }
+
+    /* ── Markdown ── */
+    .md {
+      font-family: var(--sans);
+      font-size: 13.5px;
+      line-height: 1.85;
+      color: var(--ink2);
+      animation: reveal .4s ease forwards;
+    }
+
+    @keyframes reveal {
+      from {
+        opacity: 0;
+        transform: translateY(5px);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .md h1,
+    .md h2,
+    .md h3,
+    .md h4 {
+      font-family: var(--serif);
+      color: var(--ink);
+      margin: 1.4em 0 .5em;
+      line-height: 1.25;
+      font-weight: 400;
+    }
+
+    .md h1 {
+      font-size: 1.4em;
+    }
+
+    .md h2 {
+      font-size: 1.2em;
+      border-bottom: 1px solid var(--line);
+      padding-bottom: .3em;
+    }
+
+    .md h3 {
+      font-size: 1.05em;
+      color: var(--rust);
+    }
+
+    .md p {
+      margin: .7em 0;
+    }
+
+    .md a {
+      color: var(--rust);
+      text-decoration: none;
+      border-bottom: 1px solid var(--rust-bdr);
+      transition: border-color .2s;
+    }
+
+    .md a:hover {
+      border-color: var(--rust);
+    }
+
+    .md strong {
+      color: var(--ink);
       font-weight: 600;
-      line-height: 1.3;
     }
-    .md-content h1 { font-size: 1.3em; }
-    .md-content h2 { font-size: 1.15em; }
-    .md-content h3 { font-size: 1.05em; }
-    .md-content p { margin: .75em 0; }
-    .md-content img { max-width: 100%; border-radius: 8px; margin: 8px 0; }
-    .md-content a { color: var(--accent); text-decoration: none; }
-    .md-content a:hover { text-decoration: underline; }
-    .md-content strong { color: var(--text); font-weight: 600; }
-    .md-content em { font-style: italic; color: var(--text); }
-    .md-content blockquote {
-      border-left: 3px solid var(--accent);
-      padding: 4px 16px;
+
+    .md em {
+      color: var(--ink);
+    }
+
+    .md blockquote {
       margin: 12px 0;
-      color: var(--text-muted);
-      background: rgba(108,142,245,.04);
-      border-radius: 0 6px 6px 0;
+      padding: 10px 16px;
+      border-left: 2px solid var(--rust);
+      background: var(--rust-bg);
+      color: var(--ink2);
+      border-radius: 0 4px 4px 0;
     }
-    .md-content code {
-      font-family: 'JetBrains Mono', monospace;
+
+    .md code {
+      font-family: var(--mono);
       font-size: .85em;
-      background: var(--surface2);
-      padding: 2px 6px;
-      border-radius: 4px;
-      color: var(--accent2);
+      background: var(--bg3);
+      border: 1px solid var(--line);
+      padding: 1px 6px;
+      border-radius: 3px;
+      color: var(--rust);
     }
-    .md-content pre {
-      background: var(--surface2);
-      border: 1px solid var(--border);
-      border-radius: var(--radius-sm);
+
+    .md pre {
+      background: var(--bg2);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
       padding: 16px;
       overflow-x: auto;
       margin: 12px 0;
     }
-    .md-content pre code { background: none; padding: 0; }
-    .md-content ul, .md-content ol { padding-left: 1.5em; margin: .75em 0; }
-    .md-content li { margin: .3em 0; }
 
-    /* ── Publish Result ── */
-    .publish-result {
-      margin-top: 24px;
-      padding: 20px 24px;
-      border-radius: var(--radius);
+    .md pre code {
+      background: none;
+      border: none;
+      padding: 0;
+    }
+
+    .md img {
+      max-width: 100%;
+      border-radius: 4px;
+      border: 1px solid var(--line);
+      margin: 8px 0;
+      display: block;
+    }
+
+    .md ul,
+    .md ol {
+      padding-left: 1.5em;
+      margin: .7em 0;
+    }
+
+    .md li {
+      margin: .3em 0;
+    }
+
+    /* ── Result Banner ── */
+    .result-banner {
       display: none;
+      margin-top: 20px;
+      padding: 18px 24px;
+      border-radius: var(--radius);
       align-items: flex-start;
-      gap: 14px;
-      font-size: 14px;
+      gap: 16px;
+      animation: reveal .4s ease forwards;
     }
 
-    .publish-result.visible { display: flex; }
-    .publish-result.success { background: rgba(52,211,153,.08); border: 1px solid rgba(52,211,153,.25); }
-    .publish-result.failure { background: rgba(248,113,113,.08); border: 1px solid rgba(248,113,113,.25); }
-
-    .publish-icon { font-size: 22px; flex-shrink: 0; }
-    .publish-text { flex: 1; }
-    .publish-title { font-weight: 600; margin-bottom: 4px; }
-    .publish-result.success .publish-title { color: var(--accent3); }
-    .publish-result.failure .publish-title { color: var(--error); }
-    .publish-detail { color: var(--text-muted); font-size: 13px; }
-
-    /* ── Fade In Animation ── */
-    @keyframes fadeIn {
-      from { opacity: 0; transform: translateY(8px); }
-      to { opacity: 1; transform: translateY(0); }
+    .result-banner.on {
+      display: flex;
     }
 
-    .fade-in { animation: fadeIn .4s ease forwards; }
+    .result-banner.ok {
+      background: var(--sage-bg);
+      border: 1px solid var(--sage-bdr);
+    }
 
-    /* ── Scrollbar ── */
-    ::-webkit-scrollbar { width: 6px; }
-    ::-webkit-scrollbar-track { background: transparent; }
-    ::-webkit-scrollbar-thumb { background: var(--border-active); border-radius: 3px; }
+    .result-banner.err {
+      background: var(--rust-bg);
+      border: 1px solid var(--rust-bdr);
+    }
+
+    .result-glyph {
+      font-size: 20px;
+      flex-shrink: 0;
+      margin-top: 1px;
+    }
+
+    .result-title {
+      font-family: var(--mono);
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+      margin-bottom: 5px;
+    }
+
+    .result-banner.ok .result-title {
+      color: var(--sage);
+    }
+
+    .result-banner.err .result-title {
+      color: var(--rust);
+    }
+
+    .result-body {
+      font-family: var(--sans);
+      font-size: 13px;
+      color: var(--ink2);
+    }
   </style>
 </head>
+
 <body>
 
-<header>
-  <div>
-    <div class="logo">X Article <span class="logo-sep">→</span> 墨问</div>
-    <div class="logo-sub">AI 翻译 + 实时处理过程可视化</div>
-  </div>
-</header>
-
-<div class="container">
-
-  <!-- Input -->
-  <div class="input-section">
-    <div class="input-label">输入 X 文章链接</div>
-    <div class="input-row">
-      <input
-        id="url-input"
-        type="url"
-        placeholder="https://x.com/user/status/123456789..."
-        autocomplete="off"
-        spellcheck="false"
-      />
-      <button id="start-btn" onclick="startProcess()">开始处理 →</button>
+  <!-- ── Header ── -->
+  <header>
+    <div class="header-badge">DISPATCH</div>
+    <div class="header-title">X Article → 墨问</div>
+    <div class="header-subtitle">// 情报转译系统 v1.0</div>
+    <div class="header-status">
+      <div class="status-dot"></div>
+      <span>ONLINE</span>
     </div>
-  </div>
+  </header>
 
-  <!-- Progress Steps -->
-  <div class="progress-section" id="progress-section">
-    <div class="progress-steps">
-      <div class="step" id="step-scraping">
-        <span class="step-icon">📄</span>抓取原文
-      </div>
-      <div class="step" id="step-translating">
-        <span class="step-icon">🔤</span>直译
-      </div>
-      <div class="step" id="step-refining">
-        <span class="step-icon">✨</span>润色
-      </div>
-      <div class="step" id="step-publishing">
-        <span class="step-icon">📤</span>发布墨问
+  <!-- ── Main ── -->
+  <div class="wrapper">
+
+    <!-- Input -->
+    <div class="section-label">TARGET URL</div>
+    <div class="input-block">
+      <div class="input-corner">SYS::INPUT</div>
+      <div class="input-row">
+        <div class="input-prefix">$ URL ▶</div>
+        <input id="url-input" type="url" placeholder="https://x.com/user/status/…" autocomplete="off"
+          spellcheck="false" />
+        <button id="start-btn" onclick="startProcess()">EXECUTE →</button>
       </div>
     </div>
-  </div>
 
-  <!-- Content Panels -->
-  <div class="content-grid">
-    <!-- 原文 Panel -->
-    <div class="panel" id="panel-original">
-      <div class="panel-header">
-        <div class="panel-badge"></div>
-        <div class="panel-title">原文</div>
-        <div class="panel-meta" id="meta-original"></div>
+    <!-- Pipeline -->
+    <div class="pipeline" id="pipeline">
+      <div class="pipe-step" id="ps-scraping">
+        <div class="pipe-num">01</div>
+        <div class="pipe-spinner"></div>
+        <div class="pipe-label">SCRAPE</div>
       </div>
-      <div class="panel-body" id="body-original">
-        <div class="panel-placeholder">
-          <div class="panel-placeholder-icon">📄</div>
-          <div>等待抓取原文...</div>
+      <div class="pipe-step" id="ps-translating">
+        <div class="pipe-num">02</div>
+        <div class="pipe-spinner"></div>
+        <div class="pipe-label">TRANSLATE</div>
+      </div>
+      <div class="pipe-step" id="ps-refining">
+        <div class="pipe-num">03</div>
+        <div class="pipe-spinner"></div>
+        <div class="pipe-label">REFINE</div>
+      </div>
+      <div class="pipe-step" id="ps-publishing">
+        <div class="pipe-num">04</div>
+        <div class="pipe-spinner"></div>
+        <div class="pipe-label">PUBLISH</div>
+      </div>
+    </div>
+
+    <!-- Content Grid -->
+    <div class="section-label">INTELLIGENCE OUTPUT</div>
+    <div class="grid">
+
+      <div class="panel" id="pnl-original">
+        <div class="panel-hd">
+          <div class="panel-dots">
+            <div class="panel-dot"></div>
+            <div class="panel-dot"></div>
+            <div class="panel-dot"></div>
+          </div>
+          <div class="panel-tag">原文 / SOURCE</div>
+          <div class="panel-chars" id="ch-original"></div>
+        </div>
+        <div class="panel-body" id="bd-original">
+          <div class="placeholder">
+            <div class="placeholder-glyph">❒</div>
+            <div class="placeholder-text">Awaiting scrape…</div>
+          </div>
         </div>
       </div>
-    </div>
 
-    <!-- 直译 Panel -->
-    <div class="panel" id="panel-literal">
-      <div class="panel-header">
-        <div class="panel-badge"></div>
-        <div class="panel-title">第一步：直译</div>
-        <div class="panel-meta" id="meta-literal"></div>
-      </div>
-      <div class="panel-body" id="body-literal">
-        <div class="panel-placeholder">
-          <div class="panel-placeholder-icon">🔤</div>
-          <div>等待 AI 直译...</div>
+      <div class="panel" id="pnl-literal">
+        <div class="panel-hd">
+          <div class="panel-dots">
+            <div class="panel-dot"></div>
+            <div class="panel-dot"></div>
+            <div class="panel-dot"></div>
+          </div>
+          <div class="panel-tag">直译 / LITERAL</div>
+          <div class="panel-chars" id="ch-literal"></div>
+        </div>
+        <div class="panel-body" id="bd-literal">
+          <div class="placeholder">
+            <div class="placeholder-glyph">❒</div>
+            <div class="placeholder-text">Awaiting translation…</div>
+          </div>
         </div>
       </div>
-    </div>
 
-    <!-- 润色 Panel -->
-    <div class="panel" id="panel-refined">
-      <div class="panel-header">
-        <div class="panel-badge"></div>
-        <div class="panel-title">第二步：润色</div>
-        <div class="panel-meta" id="meta-refined"></div>
-      </div>
-      <div class="panel-body" id="body-refined">
-        <div class="panel-placeholder">
-          <div class="panel-placeholder-icon">✨</div>
-          <div>等待 AI 润色...</div>
+      <div class="panel" id="pnl-refined">
+        <div class="panel-hd">
+          <div class="panel-dots">
+            <div class="panel-dot"></div>
+            <div class="panel-dot"></div>
+            <div class="panel-dot"></div>
+          </div>
+          <div class="panel-tag">润色 / REFINED</div>
+          <div class="panel-chars" id="ch-refined"></div>
+        </div>
+        <div class="panel-body" id="bd-refined">
+          <div class="placeholder">
+            <div class="placeholder-glyph">❒</div>
+            <div class="placeholder-text">Awaiting refinement…</div>
+          </div>
         </div>
       </div>
+
     </div>
+
+    <!-- Result Banner -->
+    <div class="result-banner" id="result-banner">
+      <div class="result-glyph" id="res-glyph"></div>
+      <div>
+        <div class="result-title" id="res-title"></div>
+        <div class="result-body" id="res-body"></div>
+      </div>
+    </div>
+
   </div>
 
-  <!-- Publish Result -->
-  <div class="publish-result" id="publish-result">
-    <div class="publish-icon" id="publish-icon"></div>
-    <div class="publish-text">
-      <div class="publish-title" id="publish-title"></div>
-      <div class="publish-detail" id="publish-detail"></div>
-    </div>
-  </div>
+  <script>
+    let sse = null;
 
-</div>
+    function startProcess() {
+      const url = document.getElementById('url-input').value.trim();
+      if (!url) return alert('请输入 X 文章链接');
+      reset();
+      document.getElementById('start-btn').disabled = true;
+      document.getElementById('start-btn').textContent = 'RUNNING…';
+      document.getElementById('pipeline').classList.add('visible');
+      setActive('scraping');
 
-<script>
-  let currentSource = null;
+      if (sse) sse.close();
+      sse = new EventSource('/process?url=' + encodeURIComponent(url));
 
-  function startProcess() {
-    const url = document.getElementById('url-input').value.trim();
-    if (!url) return alert('请输入 X 文章链接');
+      sse.addEventListener('scraped', e => {
+        const d = JSON.parse(e.data);
+        setDone('scraping'); setActive('translating');
+        fillPanel('original', d.content, d.content.length);
+      });
 
-    // Reset UI
-    resetUI();
+      sse.addEventListener('literal', e => {
+        const d = JSON.parse(e.data);
+        setDone('translating'); setActive('refining');
+        fillPanel('literal', d.content, d.content.length);
+      });
 
-    const btn = document.getElementById('start-btn');
-    btn.disabled = true;
-    btn.textContent = '处理中...';
+      sse.addEventListener('refined', e => {
+        const d = JSON.parse(e.data);
+        setDone('refining'); setActive('publishing');
+        fillPanel('refined', d.content, d.content.length);
+      });
 
-    document.getElementById('progress-section').classList.add('visible');
+      sse.addEventListener('published', e => {
+        const d = JSON.parse(e.data);
+        setDone('publishing');
+        showResult(d.success,
+          d.success ? 'PUBLISH COMPLETE — NON-PUBLIC' : 'PUBLISH FAILED',
+          d.noteId ? `NoteID: ${d.noteId}　${d.message}` : d.message);
+      });
 
-    setStepActive('scraping');
+      sse.addEventListener('error', e => {
+        let msg = 'Unknown error';
+        try { msg = JSON.parse(e.data).message; } catch { }
+        showResult(false, 'PIPELINE ERROR', msg);
+        done();
+      });
 
-    // Connect SSE
-    if (currentSource) currentSource.close();
-    const encodedUrl = encodeURIComponent(url);
-    currentSource = new EventSource(`/process?url=${encodedUrl}`);
+      sse.addEventListener('done', () => done());
+      sse.onerror = () => { if (sse.readyState === EventSource.CLOSED) done(); };
+    }
 
-    currentSource.addEventListener('scraped', (e) => {
-      const data = JSON.parse(e.data);
-      setStepDone('scraping');
-      setStepActive('translating');
-      renderPanel('original', data.content, data.title, data.content.length);
+    function reset() {
+      ['original', 'literal', 'refined'].forEach(id => {
+        document.getElementById('pnl-' + id).classList.remove('lit');
+        document.getElementById('ch-' + id).textContent = '';
+        const labels = { original: 'Awaiting scrape…', literal: 'Awaiting translation…', refined: 'Awaiting refinement…' };
+        document.getElementById('bd-' + id).innerHTML =
+          `<div class="placeholder"><div class="placeholder-glyph">❒</div><div class="placeholder-text">${labels[id]}</div></div>`;
+      });
+      document.getElementById('result-banner').className = 'result-banner';
+      ['scraping', 'translating', 'refining', 'publishing'].forEach(s =>
+        document.getElementById('ps-' + s).className = 'pipe-step');
+      document.getElementById('pipeline').classList.remove('visible');
+    }
+
+    function fillPanel(id, markdown, chars) {
+      document.getElementById('pnl-' + id).classList.add('lit');
+      document.getElementById('ch-' + id).textContent = chars.toLocaleString() + ' ch';
+      document.getElementById('bd-' + id).innerHTML =
+        `<div class="md">${marked.parse(markdown)}</div>`;
+    }
+
+    function setActive(n) { document.getElementById('ps-' + n).className = 'pipe-step active'; }
+    function setDone(n) {
+      const el = document.getElementById('ps-' + n);
+      el.className = 'pipe-step done';
+      el.querySelector('.pipe-num').textContent = '✓';
+    }
+
+    function showResult(ok, title, body) {
+      const rb = document.getElementById('result-banner');
+      rb.className = 'result-banner on ' + (ok ? 'ok' : 'err');
+      document.getElementById('res-glyph').textContent = ok ? '✦' : '✕';
+      document.getElementById('res-title').textContent = title;
+      document.getElementById('res-body').textContent = body;
+    }
+
+    function done() {
+      if (sse) { sse.close(); sse = null; }
+      document.getElementById('start-btn').disabled = false;
+      document.getElementById('start-btn').textContent = 'EXECUTE →';
+    }
+
+    document.getElementById('url-input').addEventListener('keydown', e => {
+      if (e.key === 'Enter') startProcess();
     });
-
-    currentSource.addEventListener('literal', (e) => {
-      const data = JSON.parse(e.data);
-      setStepDone('translating');
-      setStepActive('refining');
-      renderPanel('literal', data.content, '直译稿', data.content.length);
-    });
-
-    currentSource.addEventListener('refined', (e) => {
-      const data = JSON.parse(e.data);
-      setStepDone('refining');
-      setStepActive('publishing');
-      renderPanel('refined', data.content, '润色稿', data.content.length);
-    });
-
-    currentSource.addEventListener('published', (e) => {
-      const data = JSON.parse(e.data);
-      setStepDone('publishing');
-      showPublishResult(data);
-    });
-
-    currentSource.addEventListener('error', (e) => {
-      let msg = '未知错误';
-      try { msg = JSON.parse(e.data).message; } catch {}
-      showError(msg);
-      finalize();
-    });
-
-    currentSource.addEventListener('done', () => {
-      finalize();
-    });
-
-    // Handle SSE connection error (network level)
-    currentSource.onerror = () => {
-      if (currentSource.readyState === EventSource.CLOSED) {
-        finalize();
-      }
-    };
-  }
-
-  function resetUI() {
-    ['original', 'literal', 'refined'].forEach(id => {
-      const panel = document.getElementById(`panel-${id}`);
-      const body = document.getElementById(`body-${id}`);
-      const meta = document.getElementById(`meta-${id}`);
-      panel.classList.remove('has-content');
-      meta.textContent = '';
-      const placeholders = { original: '等待抓取原文...', literal: '等待 AI 直译...', refined: '等待 AI 润色...' };
-      const icons = { original: '📄', literal: '🔤', refined: '✨' };
-      body.innerHTML = `<div class="panel-placeholder"><div class="panel-placeholder-icon">${icons[id]}</div><div>${placeholders[id]}</div></div>`;
-    });
-
-    const result = document.getElementById('publish-result');
-    result.className = 'publish-result';
-
-    ['scraping', 'translating', 'refining', 'publishing'].forEach(s => {
-      const el = document.getElementById(`step-${s}`);
-      el.className = 'step';
-    });
-
-    document.getElementById('progress-section').classList.remove('visible');
-  }
-
-  function renderPanel(id, markdown, subtitle, charCount) {
-    const panel = document.getElementById(`panel-${id}`);
-    const body = document.getElementById(`body-${id}`);
-    const meta = document.getElementById(`meta-${id}`);
-
-    panel.classList.add('has-content');
-    meta.textContent = `${charCount.toLocaleString()} 字符`;
-
-    const html = marked.parse(markdown);
-    body.innerHTML = `<div class="md-content fade-in">${html}</div>`;
-  }
-
-  function showPublishResult(data) {
-    const result = document.getElementById('publish-result');
-    const icon = document.getElementById('publish-icon');
-    const title = document.getElementById('publish-title');
-    const detail = document.getElementById('publish-detail');
-
-    result.classList.add('visible', data.success ? 'success' : 'failure');
-    icon.textContent = data.success ? '✅' : '❌';
-    title.textContent = data.success ? '发布成功（非公开）' : '发布失败';
-    detail.textContent = data.noteId ? `NoteID: ${data.noteId} — ${data.message}` : data.message;
-  }
-
-  function showError(msg) {
-    const result = document.getElementById('publish-result');
-    result.classList.add('visible', 'failure');
-    document.getElementById('publish-icon').textContent = '⚠️';
-    document.getElementById('publish-title').textContent = '处理出错';
-    document.getElementById('publish-detail').textContent = msg;
-  }
-
-  function setStepActive(name) {
-    const el = document.getElementById(`step-${name}`);
-    const icons = { scraping: '📄', translating: '🔤', refining: '✨', publishing: '📤' };
-    const labels = { scraping: '抓取原文', translating: '直译', refining: '润色', publishing: '发布墨问' };
-    el.className = 'step active';
-    el.innerHTML = `<span class="step-spinner"></span>${labels[name]}`;
-  }
-
-  function setStepDone(name) {
-    const el = document.getElementById(`step-${name}`);
-    const labels = { scraping: '抓取原文', translating: '直译', refining: '润色', publishing: '发布墨问' };
-    el.className = 'step done';
-    el.innerHTML = `<span class="step-icon">✓ </span>${labels[name]}`;
-  }
-
-  function finalize() {
-    if (currentSource) { currentSource.close(); currentSource = null; }
-    const btn = document.getElementById('start-btn');
-    btn.disabled = false;
-    btn.textContent = '开始处理 →';
-  }
-
-  // Allow pressing Enter in input
-  document.getElementById('url-input').addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') startProcess();
-  });
-</script>
+  </script>
 
 </body>
+
 </html>
