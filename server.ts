@@ -3,9 +3,9 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import * as dotenv from 'dotenv';
-import { XScraper } from './libs/scraper.ts';
-import { Translator } from './libs/translator.ts';
-import { MowenPublisher } from './libs/mowen.ts';
+import { XScraper } from './libs/scraper.js';
+import { Translator } from './libs/translator.js';
+import { MowenPublisher } from './libs/mowen.js';
 
 dotenv.config();
 
@@ -66,54 +66,27 @@ async function handleScrape(url: string, res: http.ServerResponse) {
     }
 }
 
-// ── Step 2: Translate (literal) ─────────────────────────────────
-async function handleTranslate(markdown: string, res: http.ServerResponse) {
+// ── Step 2-4: Translate & Review & Refine Pipeline ────────────────
+async function handleProcessPipeline(markdown: string, res: http.ServerResponse) {
     initSSE(res);
     try {
-        sendEvent(res, 'status', { message: '正在直译...' });
+        sendEvent(res, 'status', { message: '初始化翻译 AI...' });
         const translator = new Translator(OPENAI_API_KEY, OPENAI_BASE_URL, OPENAI_MODEL);
-        let literalContent = '';
+
         await translator.translateMarkdown(
             markdown,
             (stage, content) => {
-                if (stage === 'literal') {
-                    literalContent = content;
-                    sendEvent(res, 'literal', { content });
-                }
+                // When a stage is complete
+                sendEvent(res, `stage_complete`, { stage, content });
             },
             (stage, chunk) => {
-                if (stage === 'literal') {
-                    sendEvent(res, 'literal_chunk', { chunk });
-                }
+                // Real-time streaming chunks
+                sendEvent(res, `stage_chunk`, { stage, chunk });
             }
         );
-        sendEvent(res, 'done', { message: '直译完成' });
+        sendEvent(res, 'done', { message: '翻译评审流程完毕！' });
     } catch (e) {
-        sendEvent(res, 'error', { message: `直译失败：${(e as Error).message}` });
-    } finally {
-        res.end();
-    }
-}
-
-// ── Step 3: Refine ──────────────────────────────────────────────
-async function handleRefine(original: string, literal: string, res: http.ServerResponse) {
-    initSSE(res);
-    try {
-        sendEvent(res, 'status', { message: '正在润色...' });
-        const translator = new Translator(OPENAI_API_KEY, OPENAI_BASE_URL, OPENAI_MODEL);
-        await translator.refineMarkdown(
-            original,
-            literal,
-            (content: string) => {
-                sendEvent(res, 'refined', { content });
-            },
-            (chunk: string) => {
-                sendEvent(res, 'refined_chunk', { chunk });
-            }
-        );
-        sendEvent(res, 'done', { message: '润色完成' });
-    } catch (e) {
-        sendEvent(res, 'error', { message: `润色失败：${(e as Error).message}` });
+        sendEvent(res, 'error', { message: `AI处理失败：${(e as Error).message}` });
     } finally {
         res.end();
     }
@@ -174,21 +147,12 @@ const server = http.createServer(async (req, res) => {
         return;
     }
 
-    // Step 2: POST /translate  body: { markdown }
-    if (pathname === '/translate' && req.method === 'POST') {
+    // Step 2: POST /process  body: { markdown }
+    if (pathname === '/process' && req.method === 'POST') {
         const body = await readBody(req);
         const { markdown } = JSON.parse(body);
         if (!markdown) { res.writeHead(400); res.end(JSON.stringify({ error: 'Missing markdown' })); return; }
-        await handleTranslate(markdown, res);
-        return;
-    }
-
-    // Step 3: POST /refine  body: { original, literal }
-    if (pathname === '/refine' && req.method === 'POST') {
-        const body = await readBody(req);
-        const { original, literal } = JSON.parse(body);
-        if (!literal) { res.writeHead(400); res.end(JSON.stringify({ error: 'Missing literal' })); return; }
-        await handleRefine(original || '', literal, res);
+        await handleProcessPipeline(markdown, res);
         return;
     }
 
@@ -209,8 +173,7 @@ server.listen(PORT, () => {
     console.log(`\n🚀 X Article → Mowen 可视化服务已启动`);
     console.log(`📡 访问地址: http://localhost:${PORT}\n`);
     console.log('📋 调试模式：步骤可单独手动触发');
-    console.log('   GET  /scrape?url=...   → Step 1 抓取');
-    console.log('   POST /translate        → Step 2 直译');
-    console.log('   POST /refine           → Step 3 润色');
-    console.log('   POST /publish          → Step 4 发布\n');
+    console.log('   GET  /scrape?url=...   → Step 1 抓取原文');
+    console.log('   POST /process          → Step 2 初译、评审及最终润色（全自动）');
+    console.log('   POST /publish          → Step 3 提取信息发布\n');
 });

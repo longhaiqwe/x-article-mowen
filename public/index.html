@@ -768,25 +768,31 @@
         <div class="pipe-num">01</div>
         <div class="pipe-spinner"></div>
         <div class="pipe-label">SCRAPE</div>
-        <button class="pipe-btn" id="btn-scrape" onclick="runScrape()">RUN</button>
       </div>
-      <div class="pipe-step" id="ps-translating">
+      <div class="pipe-step" id="ps-draft">
         <div class="pipe-num">02</div>
         <div class="pipe-spinner"></div>
-        <div class="pipe-label">TRANSLATE</div>
-        <button class="pipe-btn" id="btn-translate" onclick="runTranslate()">RUN</button>
+        <div class="pipe-label">DRAFT</div>
       </div>
-      <div class="pipe-step" id="ps-refining">
+      <div class="pipe-step" id="ps-reviews">
         <div class="pipe-num">03</div>
         <div class="pipe-spinner"></div>
-        <div class="pipe-label">REFINE</div>
-        <button class="pipe-btn" id="btn-refine" onclick="runRefine()">RUN</button>
+        <div class="pipe-label">REVIEW (x3)</div>
       </div>
-      <div class="pipe-step" id="ps-publishing">
+      <div class="pipe-step" id="ps-synthesis">
         <div class="pipe-num">04</div>
         <div class="pipe-spinner"></div>
+        <div class="pipe-label">SYNTHESIS</div>
+      </div>
+      <div class="pipe-step" id="ps-final">
+        <div class="pipe-num">05</div>
+        <div class="pipe-spinner"></div>
+        <div class="pipe-label">FINAL POLISH</div>
+      </div>
+      <div class="pipe-step" id="ps-publishing">
+        <div class="pipe-num">06</div>
+        <div class="pipe-spinner"></div>
         <div class="pipe-label">PUBLISH</div>
-        <button class="pipe-btn" id="btn-publish" onclick="runPublish()">RUN</button>
       </div>
     </div>
 
@@ -812,17 +818,17 @@
         </div>
       </div>
 
-      <div class="panel" id="pnl-literal">
+      <div class="panel" id="pnl-draft">
         <div class="panel-hd">
           <div class="panel-dots">
             <div class="panel-dot"></div>
             <div class="panel-dot"></div>
             <div class="panel-dot"></div>
           </div>
-          <div class="panel-tag">直译 / LITERAL</div>
-          <div class="panel-chars" id="ch-literal"></div>
+          <div class="panel-tag">初稿 / DRAFT</div>
+          <div class="panel-chars" id="ch-draft"></div>
         </div>
-        <div class="panel-body" id="bd-literal">
+        <div class="panel-body" id="bd-draft">
           <div class="placeholder">
             <div class="placeholder-glyph">❒</div>
             <div class="placeholder-text">Awaiting translation…</div>
@@ -830,17 +836,32 @@
         </div>
       </div>
 
-      <div class="panel" id="pnl-refined">
+      <div class="panel" id="pnl-reviews" style="display: none;">
         <div class="panel-hd">
           <div class="panel-dots">
             <div class="panel-dot"></div>
             <div class="panel-dot"></div>
             <div class="panel-dot"></div>
           </div>
-          <div class="panel-tag">润色 / REFINED</div>
-          <div class="panel-chars" id="ch-refined"></div>
+          <div class="panel-tag">评审意见 / REVIEWS</div>
+          <div class="panel-chars" id="ch-reviews"></div>
         </div>
-        <div class="panel-body" id="bd-refined">
+        <div class="panel-body" id="bd-reviews" style="display:flex; flex-direction:column; gap:16px;">
+          <!-- dynamic inject -->
+        </div>
+      </div>
+
+      <div class="panel" id="pnl-final">
+        <div class="panel-hd">
+          <div class="panel-dots">
+            <div class="panel-dot"></div>
+            <div class="panel-dot"></div>
+            <div class="panel-dot"></div>
+          </div>
+          <div class="panel-tag">最终润色 / FINAL</div>
+          <div class="panel-chars" id="ch-final"></div>
+        </div>
+        <div class="panel-body" id="bd-final">
           <div class="placeholder">
             <div class="placeholder-glyph">❒</div>
             <div class="placeholder-text">Awaiting refinement…</div>
@@ -865,11 +886,18 @@
     // ── 状态 ────────────────────────────────────────────
     let currentUrl = '';
     let originalMarkdown = '';  // 抓取到的原文
-    let literalMarkdown = '';   // 直译结果
-    let refinedMarkdown = '';   // 润色结果
+    let draftMarkdown = '';   // 初稿结果
+    let finalMarkdown = '';   // 润色结果
     let articleTitle = 'X Article';
     let currentSSE = null;
-    const streamBuf = { literal: '', refined: '' };
+    const streamBuf = {
+      draft: '',
+      review_fluency: '',
+      review_accuracy: '',
+      review_style: '',
+      synthesis: '',
+      final: ''
+    };
 
     // ── 工具函数 ─────────────────────────────────────────
     function setActive(n) { document.getElementById('ps-' + n).className = 'pipe-step active'; }
@@ -916,41 +944,37 @@
       if (!url) return;
       currentUrl = url;
       // 重置所有状态
-      originalMarkdown = ''; literalMarkdown = ''; refinedMarkdown = '';
-      streamBuf.literal = ''; streamBuf.refined = '';
+      originalMarkdown = ''; draftMarkdown = ''; finalMarkdown = '';
+      Object.keys(streamBuf).forEach(k => streamBuf[k] = '');
       document.getElementById('pipeline').style.display = 'flex';
 
       // 重置 pipe 步骤样式
-      ['scraping', 'translating', 'refining', 'publishing'].forEach(s => {
+      ['scraping', 'draft', 'reviews', 'synthesis', 'final', 'publishing'].forEach(s => {
         document.getElementById('ps-' + s).className = 'pipe-step';
-        const numEl = document.getElementById('ps-' + s).querySelector('.pipe-num');
-        numEl.textContent = { scraping: '01', translating: '02', refining: '03', publishing: '04' }[s];
       });
-      // 重置按钮
-      ['btn-scrape', 'btn-translate', 'btn-refine', 'btn-publish'].forEach(id => {
-        const btn = document.getElementById(id);
-        btn.className = 'pipe-btn'; btn.textContent = 'RUN';
-      });
+
       // 重置面板
-      ['original', 'literal', 'refined'].forEach(id => {
-        document.getElementById('pnl-' + id).classList.remove('lit');
-        document.getElementById('ch-' + id).textContent = '';
-        const labels = { original: 'Awaiting scrape…', literal: 'Awaiting translation…', refined: 'Awaiting refinement…' };
-        document.getElementById('bd-' + id).innerHTML =
-          `<div class="placeholder"><div class="placeholder-glyph">❒</div><div class="placeholder-text">${labels[id]}</div></div>`;
+      ['original', 'draft', 'final'].forEach(id => {
+        const pnl = document.getElementById('pnl-' + id);
+        if (pnl) {
+          pnl.classList.remove('lit');
+          document.getElementById('ch-' + id).textContent = '';
+          const labels = { original: 'Awaiting scrape…', draft: 'Awaiting draft…', final: 'Awaiting final polish…' };
+          document.getElementById('bd-' + id).innerHTML =
+            `<div class="placeholder"><div class="placeholder-glyph">❒</div><div class="placeholder-text">${labels[id]}</div></div>`;
+        }
       });
+      document.getElementById('pnl-reviews').style.display = 'none';
+      document.getElementById('bd-reviews').innerHTML = '';
+
       document.getElementById('result-banner').className = 'result-banner';
 
-      // Step 1 立刻变为 ready
-      setReady('btn-scrape');
+      // 启动自动化流程
+      runProcess();
     }
 
-    // ── Step 1: Scrape ───────────────────────────────────
-    function runScrape() {
-      const btn = document.getElementById('btn-scrape');
-      if (!btn.classList.contains('ready')) return;
+    function runProcess() {
       closeSSE();
-      setBtnRunning('btn-scrape');
       setActive('scraping');
 
       currentSSE = new EventSource('/scrape?url=' + encodeURIComponent(currentUrl));
@@ -964,116 +988,103 @@
 
       currentSSE.addEventListener('done', () => {
         setDone('scraping');
-        setBtnDone('btn-scrape');
-        setReady('btn-translate');
         closeSSE();
+        runAiPipeline(); // trigger next step
       });
 
       currentSSE.addEventListener('error', e => {
         let msg = 'Unknown error';
         try { msg = JSON.parse(e.data).message; } catch { }
         showResult(false, 'SCRAPE ERROR', msg);
-        document.getElementById('btn-scrape').className = 'pipe-btn ready';
-        document.getElementById('btn-scrape').textContent = 'RETRY';
         closeSSE();
       });
 
       currentSSE.onerror = () => { if (currentSSE && currentSSE.readyState === EventSource.CLOSED) closeSSE(); };
     }
 
-    // ── Step 2: Translate ────────────────────────────────
-    function runTranslate() {
-      const btn = document.getElementById('btn-translate');
-      if (!btn.classList.contains('ready')) return;
+    // ── Central AI Pipeline ──────────────────────────
+    function runAiPipeline() {
       closeSSE();
-      setBtnRunning('btn-translate');
-      setActive('translating');
-      streamBuf.literal = '';
+      originalMarkdown;
+      let reviewDOM = { fluency: null, accuracy: null, style: null };
 
-      // SSE 通过 fetch+ReadableStream 读取（POST SSE）
+      listenSSE('/process', { markdown: originalMarkdown }, {
+        stage_chunk: (data) => {
+          const { stage, chunk } = data;
+          streamBuf[stage] += chunk;
 
-      listenSSE('/translate', { markdown: originalMarkdown }, {
-        literal_chunk: (data) => {
-          const { chunk } = data;
-          if (!streamBuf.literal) {
-            document.getElementById('pnl-literal').classList.add('lit');
-            document.getElementById('bd-literal').innerHTML = '<div class="md" id="md-literal"></div>';
+          if (stage === 'draft') {
+            setActive('draft');
+            if (!document.getElementById('md-draft')) {
+              document.getElementById('pnl-draft').classList.add('lit');
+              document.getElementById('bd-draft').innerHTML = '<div class="md" id="md-draft"></div>';
+            }
+            document.getElementById('md-draft').innerHTML = marked.parse(streamBuf.draft);
+            document.getElementById('ch-draft').textContent = streamBuf.draft.length.toLocaleString() + ' ch';
           }
-          streamBuf.literal += chunk;
-          document.getElementById('md-literal').innerHTML = marked.parse(streamBuf.literal);
-          document.getElementById('ch-literal').textContent = streamBuf.literal.length.toLocaleString() + ' ch';
+          else if (stage.startsWith('review_')) {
+            setDone('draft');
+            setActive('reviews');
+            const revPanel = document.getElementById('pnl-reviews');
+            if (revPanel.style.display === 'none') revPanel.style.display = 'flex';
+
+            const rType = stage.split('_')[1];
+            if (!reviewDOM[rType]) {
+              const bd = document.getElementById('bd-reviews');
+              bd.innerHTML += `<div class="md" style="font-size:12px; background:var(--bg2); padding:10px; border-radius:4px" id="md-rev-${rType}"><strong>${rType.toUpperCase()}</strong><br/></div>`;
+              reviewDOM[rType] = true;
+            }
+            document.getElementById('md-rev-' + rType).innerHTML = marked.parse('**' + rType.toUpperCase() + ' Review**\n\n' + streamBuf[stage]);
+          }
+          else if (stage === 'synthesis') {
+            setDone('reviews');
+            setActive('synthesis');
+            // We can repurpose the original panel or just show a status
+            document.getElementById('bd-original').innerHTML = `<div class="placeholder"><div class="placeholder-glyph">✺</div><div class="placeholder-text">Synthesizing Reviews...</div></div>`;
+          }
+          else if (stage === 'final') {
+            setDone('synthesis');
+            setActive('final');
+            if (!document.getElementById('md-final')) {
+              document.getElementById('pnl-final').classList.add('lit');
+              document.getElementById('bd-final').innerHTML = '<div class="md" id="md-final"></div>';
+            }
+            document.getElementById('md-final').innerHTML = marked.parse(streamBuf.final);
+            document.getElementById('ch-final').textContent = streamBuf.final.length.toLocaleString() + ' ch';
+          }
         },
-        literal: (data) => {
-          literalMarkdown = data.content;
+        stage_complete: (data) => {
+          const { stage, content } = data;
+          if (stage === 'final') {
+            finalMarkdown = content;
+          }
         },
         done: () => {
-          setDone('translating');
-          setBtnDone('btn-translate');
-          setReady('btn-refine');
+          setDone('final');
+          runPublish();
         },
         error: (data) => {
-          showResult(false, 'TRANSLATE ERROR', data.message);
-          document.getElementById('btn-translate').className = 'pipe-btn ready';
-          document.getElementById('btn-translate').textContent = 'RETRY';
+          showResult(false, 'PIPELINE ERROR', data.message);
         }
       });
     }
 
-    // ── Step 3: Refine ───────────────────────────────────
-    function runRefine() {
-      const btn = document.getElementById('btn-refine');
-      if (!btn.classList.contains('ready')) return;
-      setBtnRunning('btn-refine');
-      setActive('refining');
-      streamBuf.refined = '';
-
-      listenSSE('/refine', { original: originalMarkdown, literal: literalMarkdown }, {
-        refined_chunk: (data) => {
-          const { chunk } = data;
-          if (!streamBuf.refined) {
-            document.getElementById('pnl-refined').classList.add('lit');
-            document.getElementById('bd-refined').innerHTML = '<div class="md" id="md-refined"></div>';
-          }
-          streamBuf.refined += chunk;
-          document.getElementById('md-refined').innerHTML = marked.parse(streamBuf.refined);
-          document.getElementById('ch-refined').textContent = streamBuf.refined.length.toLocaleString() + ' ch';
-        },
-        refined: (data) => {
-          refinedMarkdown = data.content;
-        },
-        done: () => {
-          setDone('refining');
-          setBtnDone('btn-refine');
-          setReady('btn-publish');
-        },
-        error: (data) => {
-          showResult(false, 'REFINE ERROR', data.message);
-          document.getElementById('btn-refine').className = 'pipe-btn ready';
-          document.getElementById('btn-refine').textContent = 'RETRY';
-        }
-      });
-    }
+    // SSE 通过 fetch+ReadableStream 读取（POST SSE）
 
     // ── Step 4: Publish ──────────────────────────────────
     function runPublish() {
-      const btn = document.getElementById('btn-publish');
-      if (!btn.classList.contains('ready')) return;
-      setBtnRunning('btn-publish');
       setActive('publishing');
 
       const title = articleTitle + ' (中文翻译)';
-      listenSSE('/publish', { title, markdown: refinedMarkdown }, {
+      listenSSE('/publish', { title, markdown: finalMarkdown }, {
         published: (data) => {
           setDone('publishing');
-          setBtnDone('btn-publish');
           showResult(data.success,
             data.success ? 'PUBLISH COMPLETE' : 'PUBLISH FAILED',
             data.noteId ? `NoteID: ${data.noteId}   ${data.message}` : data.message);
         },
         error: (data) => {
           showResult(false, 'PUBLISH ERROR', data.message);
-          document.getElementById('btn-publish').className = 'pipe-btn ready';
-          document.getElementById('btn-publish').textContent = 'RETRY';
         }
       });
     }

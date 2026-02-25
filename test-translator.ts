@@ -1,4 +1,4 @@
-import { Translator } from './libs/translator';
+import { Translator } from './libs/translator.js';
 import * as dotenv from 'dotenv';
 import * as fs from 'fs';
 
@@ -27,18 +27,34 @@ Not just having a nice and muscular body, but to be fully developed in every dom
     const translator = new Translator(OPENAI_API_KEY, OPENAI_BASE_URL, MODEL);
 
     try {
-        const result = await translator.translateMarkdown(testMarkdown);
+        const result = await translator.translateMarkdown(
+            testMarkdown,
+            (stage: string, content: string) => {
+                console.log(`\n\n=== Completed Stage: ${stage} ===\n`);
+                // You can uncomment below to see intermediate results in console
+                // console.log(content.substring(0, 200) + '...\n');
+            }
+        );
 
-        console.log('\n--- Literal Translation ---');
-        console.log(result.literalTranslation);
-        console.log('\n---------------------------\n');
+        console.log('\n=============================================');
+        console.log('--- Draft Translation ---');
+        console.log(result.draftTranslation);
+        console.log('\n--- Review (Fluency) ---');
+        console.log(result.reviews.fluency);
+        console.log('\n--- Review (Accuracy) ---');
+        console.log(result.reviews.accuracy);
+        console.log('\n--- Review (Style) ---');
+        console.log(result.reviews.style);
+        console.log('\n--- Synthesized Translation ---');
+        console.log(result.synthesizedTranslation);
+        console.log('\n--- Final Polish Translation ---');
+        console.log(result.finalTranslation);
+        console.log('=============================================\n');
 
-        console.log('--- Refined Translation ---');
-        console.log(result.refinedTranslation);
-        console.log('\n---------------------------\n');
-
-        fs.writeFileSync('output-translation-test.md', result.refinedTranslation);
-        console.log('✅ Refined translation saved to output-translation-test.md');
+        fs.writeFileSync('output-translation-test.md', result.finalTranslation);
+        fs.writeFileSync('output-translation-debug.json', JSON.stringify(result, null, 2));
+        console.log('✅ Final translation saved to output-translation-test.md');
+        console.log('✅ Full debug pipeline saved to output-translation-debug.json');
     } catch (error) {
         console.error('❌ Translation failed:', error);
     }

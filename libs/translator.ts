@@ -1,12 +1,25 @@
 import OpenAI from 'openai';
 
 export interface TranslationResult {
-    literalTranslation: string;
-    refinedTranslation: string;
+    draftTranslation: string;
+    reviews: {
+        fluency: string;
+        accuracy: string;
+        style: string;
+    };
+    synthesizedTranslation: string;
+    finalTranslation: string;
 }
 
-export type TranslationProgressCallback = (stage: 'literal' | 'refined', content: string) => void;
-export type TranslationChunkCallback = (stage: 'literal' | 'refined', chunk: string) => void;
+export type TranslationProgressCallback = (
+    stage: 'draft' | 'review_fluency' | 'review_accuracy' | 'review_style' | 'synthesis' | 'final',
+    content: string
+) => void;
+
+export type TranslationChunkCallback = (
+    stage: 'draft' | 'review_fluency' | 'review_accuracy' | 'review_style' | 'synthesis' | 'final',
+    chunk: string
+) => void;
 
 export class Translator {
     private openai: OpenAI;
@@ -21,56 +34,22 @@ export class Translator {
     }
 
     /**
-     * 流式直译，每个 chunk 通过 onChunk 回调推送
+     * 阶段 1：初步改写 (Draft Translation)
      */
-    public async literalTranslateStream(
+    public async draftTranslate(
         content: string,
-        onChunk: (chunk: string) => void
+        onChunk?: (chunk: string) => void
     ): Promise<string> {
-        const systemPrompt = `你是一个专业的技术与商业文章翻译官。请将下方用户提供的包含 Markdown 格式的英文原文直接翻译为中文。
-要求：
-1. 必须忠实于原文，不要增加原本不存在的信息，也不要删减细节。
-2. 保持原有的 Markdown 格式（如标题、由于加粗、图片链接、超链接等）必须一丝不差地保留在译文的相应位置。
-3. 对于专有名词和术语，尽量使用行业内常用的中文表达。`;
+        const systemPrompt = `你是一位资深的语言专家，专精于将英文文章改写为高质量、地道的中文内容。你的任务不是简单的翻译，而是进行深度的内容重塑，在保持原文核心含义和信息完整性的前提下，使文本更符合中文读者的阅读习惯和表达方式。
 
-        const stream = await this.openai.chat.completions.create({
-            model: this.model,
-            stream: true,
-            messages: [
-                { role: 'system', content: systemPrompt },
-                { role: 'user', content }
-            ],
-            temperature: 0.3,
-        });
+**任务目标：**
+1. **深入理解原文，精准把握含义：** 结合语境，精准翻译术语。
+2. **中文表达，地道自然：** 调整语序，拆分长句，选用贴合语境的词汇。
+3. **信息完整，准确传达：** 不得遗漏、增添或歪曲关键信息。
+4. **Markdown 格式保留：** 完整保留原文的图片链接、超链接、代码块、加粗、各级标题等所有 Markdown 格式。
+5. **只输出正文内容**，不允许有任何解释性前言或多余的话。`;
 
-        let full = '';
-        for await (const chunk of stream) {
-            const delta = chunk.choices[0]?.delta?.content || '';
-            if (delta) {
-                full += delta;
-                onChunk(delta);
-            }
-        }
-        return full;
-    }
-
-    /**
-     * 流式润色，每个 chunk 通过 onChunk 回调推送
-     */
-    public async refineTranslationStream(
-        sourceText: string,
-        literalText: string,
-        onChunk: (chunk: string) => void
-    ): Promise<string> {
-        const systemPrompt = `你是一个资深的中文作家和文字编辑。我给你一段英文原文和对应的中文直译稿。你需要对直译稿进行深度润色，使其读起来就像是中文母语者写出的一篇高质量文章。
-
-要求：
-1. **彻底消除翻译腔**：用词要地道、自然，句式可以根据中文表达习惯进行适当的倒装、拆分或合并。
-2. **语气与风格匹配**：原文是深度长文分析风格，带有一定的哲思或技术探讨色彩。请调整译文语气，使其更具说服力和专业感。
-3. **完美保留原格式**：所有原 Markdown 结构（包括 \`#\` 标题、\`![](url)\` 图片、\`[]()\` 链接等）绝对不能改变、遗漏或破坏。
-4. **只输出润色后的内容**，不要添加任何额外的问候语或解释说明。`;
-
-        const userPrompt = `【英文原文】\n${sourceText}\n\n【中文直译】\n${literalText}\n\n请输出仅包含润色后内容的完整 Markdown：`;
+        const userPrompt = `**英文原文：**\n\n${content}`;
 
         const stream = await this.openai.chat.completions.create({
             model: this.model,
@@ -79,7 +58,7 @@ export class Translator {
                 { role: 'system', content: systemPrompt },
                 { role: 'user', content: userPrompt }
             ],
-            temperature: 0.6,
+            temperature: 0.7,
         });
 
         let full = '';
@@ -87,54 +66,231 @@ export class Translator {
             const delta = chunk.choices[0]?.delta?.content || '';
             if (delta) {
                 full += delta;
-                onChunk(delta);
+                onChunk?.(delta);
             }
         }
         return full;
     }
 
     /**
-     * 单独润色（流式）——用于调试模式下步骤 3 单独触发
-     * @param original 英文原文 markdown
-     * @param literal  直译后的 markdown
+     * 阶段 2: 语言流畅性与地道性评审 (Review 1)
      */
-    public async refineMarkdown(
+    public async reviewFluency(
         original: string,
-        literal: string,
-        onComplete?: (content: string) => void,
+        draft: string,
         onChunk?: (chunk: string) => void
     ): Promise<string> {
-        console.log(`[Translator] Starting standalone refinement (streaming)...`);
-        const refined = await this.refineTranslationStream(original, literal, (chunk) => {
-            onChunk?.(chunk);
-        });
-        onComplete?.(refined);
-        return refined;
+        const systemPrompt = `你是一位资深的中文语言专家和技术编辑，专精于评估中文文本的流畅性、地道性和自然度。
+请仔细阅读以下由英文改写而来的中文技术文章（\`draft\`部分），并从语言表达的角度进行细致的评审。
+
+**评审重点：**
+1. 句子流畅度、衔接自然度。
+2. 词汇选择是否地道，是否符合现代标准汉语规范。
+3. 避免翻译腔和生硬表达。
+
+**输出要求：**
+指出问题并在不需要改变原意的基础上给出明确具体的修改建议。只输出建议内容。`;
+
+        return this.runReviewStream(systemPrompt, original, draft, onChunk);
     }
 
     /**
-     * 完整翻译流程（流式），通过 onChunk 实时推送每个阶段的增量内容
+     * 阶段 2: 内容准确性与逻辑性评审 (Review 2)
+     */
+    public async reviewAccuracy(
+        original: string,
+        draft: string,
+        onChunk?: (chunk: string) => void
+    ): Promise<string> {
+        const systemPrompt = `你是一位资深的学术编辑和技术内容审核专家。
+请仔细阅读以下由英文改写而来的中文技术文章，并与原始英文文本进行对比，从内容和逻辑的角度进行严格的评审。
+
+**评审重点：**
+1. 信息是否与原文一致，有无遗漏、歪曲或擅自增添。
+2. 专业术语翻译是否准确。
+3. 逻辑关系是否顺畅连贯。
+
+**输出要求：**
+指出问题并给出明确具体的改善建议。只输出建议内容。`;
+
+        return this.runReviewStream(systemPrompt, original, draft, onChunk);
+    }
+
+    /**
+     * 阶段 2: 风格一致性与目标读者适配性评审 (Review 3)
+     */
+    public async reviewStyle(
+        original: string,
+        draft: string,
+        onChunk?: (chunk: string) => void
+    ): Promise<string> {
+        const systemPrompt = `你是一位资深的文案策划和用户体验研究员。
+请仔细阅读以下由英文改写而来的中文技术文章，从风格、受众和传播效果的角度进行全面评审。
+
+**评审重点：**
+1. 语言风格是否一致。
+2. 术语和难度是否适配技术人员和感兴趣的一般读者，是否需要在术语后增加简单解释以增强通俗性。
+3. 是否能给读者留下深刻印象，表达有无过分晦涩抽象之处。
+
+**输出要求：**
+指出问题并给出明确具体的完善建议。只输出建议内容。`;
+
+        return this.runReviewStream(systemPrompt, original, draft, onChunk);
+    }
+
+    private async runReviewStream(systemPrompt: string, original: string, draft: string, onChunk?: (chunk: string) => void): Promise<string> {
+        const userPrompt = `<article>
+  <source lang="en"><content><![CDATA[${original}]]></content></source>
+  <rewritten lang="zh"><draft><![CDATA[${draft}]]></draft></rewritten>
+</article>`;
+
+        const stream = await this.openai.chat.completions.create({
+            model: this.model,
+            stream: true,
+            messages: [
+                { role: 'system', content: systemPrompt },
+                { role: 'user', content: userPrompt }
+            ],
+            temperature: 0.7,
+        });
+
+        let full = '';
+        for await (const chunk of stream) {
+            const delta = chunk.choices[0]?.delta?.content || '';
+            if (delta) {
+                full += delta;
+                onChunk?.(delta);
+            }
+        }
+        return full;
+    }
+
+    /**
+     * 阶段 3: 综合改进 (Synthesis)
+     */
+    public async synthesizeReviews(
+        original: string,
+        draft: string,
+        reviews: { fluency: string; accuracy: string; style: string },
+        onChunk?: (chunk: string) => void
+    ): Promise<string> {
+        const systemPrompt = `你是一位资深的技术编辑和语言专家，擅长整合多方意见，对文本进行综合改进和优化。你的任务是：基于英文原文、初步改写稿以及三个评审 LLM 的意见，生成一份最终改进版的中文改写文章。
+
+**任务目标：**
+精准完整传达原文信息，语言流畅地道，全面采纳评审LLM的合理建议。
+
+要求：
+1. 保持原有 Markdown 结构。
+2. 融合三方有效建议优化正文表达。
+3. 只输出修改后的文章正文，不要输出修改说明或多余废话。`;
+
+        const userPrompt = `<article>
+  <source lang="en"><content><![CDATA[${original}]]></content></source>
+  <rewritten lang="zh">
+    <draft><![CDATA[${draft}]]></draft>
+    <review>
+      <llm1><![CDATA[${reviews.fluency}]]></llm1>
+      <llm2><![CDATA[${reviews.accuracy}]]></llm2>
+      <llm3><![CDATA[${reviews.style}]]></llm3>
+    </review>
+  </rewritten>
+</article>`;
+
+        const stream = await this.openai.chat.completions.create({
+            model: this.model,
+            stream: true,
+            messages: [
+                { role: 'system', content: systemPrompt },
+                { role: 'user', content: userPrompt }
+            ],
+            temperature: 0.7,
+        });
+
+        let full = '';
+        for await (const chunk of stream) {
+            const delta = chunk.choices[0]?.delta?.content || '';
+            if (delta) {
+                full += delta;
+                onChunk?.(delta);
+            }
+        }
+        return full;
+    }
+
+    /**
+     * 阶段 4: 最终润色 (Final Polish)
+     */
+    public async finalPolish(
+        synthesizedText: string,
+        onChunk?: (chunk: string) => void
+    ): Promise<string> {
+        const systemPrompt = `你是一位资深的语言专家、技术编辑和校对员，专精于文本的润色、校对和一致性检查。请对输入文章进行最后的润色和格式检查。
+
+**终检重点：**
+1. 语言纯正自然，毫无语病。
+2. Markdown 格式完好无损（配图链接，加粗标题全部完好）。
+3. 只进行微调润色，不要伤筋动骨大幅删改。
+4. 请直接输出最终版正文，不要有任何多余的开场白或结尾语。`;
+
+        const userPrompt = `<article>\n<rewritten lang="zh">\n<revised><![CDATA[${synthesizedText}]]></revised>\n</rewritten>\n</article>`;
+
+        const stream = await this.openai.chat.completions.create({
+            model: this.model,
+            stream: true,
+            messages: [
+                { role: 'system', content: systemPrompt },
+                { role: 'user', content: userPrompt }
+            ],
+            temperature: 0.7,
+        });
+
+        let full = '';
+        for await (const chunk of stream) {
+            const delta = chunk.choices[0]?.delta?.content || '';
+            if (delta) {
+                full += delta;
+                onChunk?.(delta);
+            }
+        }
+        return full;
+    }
+
+    /**
+     * 完整的多轮翻译评审流 (Orchestrator)
      */
     public async translateMarkdown(
         markdownContent: string,
         onProgress?: TranslationProgressCallback,
         onChunk?: TranslationChunkCallback
     ): Promise<TranslationResult> {
-        console.log(`[Translator] Starting literal translation (streaming)...`);
-        const literal = await this.literalTranslateStream(markdownContent, (chunk) => {
-            onChunk?.('literal', chunk);
-        });
-        onProgress?.('literal', literal);
 
-        console.log(`[Translator] Starting refinement (streaming)...`);
-        const refined = await this.refineTranslationStream(markdownContent, literal, (chunk) => {
-            onChunk?.('refined', chunk);
-        });
-        onProgress?.('refined', refined);
+        console.log(`[Translator] Stage 1: Draft Translation...`);
+        const draft = await this.draftTranslate(markdownContent, (c) => onChunk?.('draft', c));
+        onProgress?.('draft', draft);
+
+        console.log(`[Translator] Stage 2: Parallel Reviews...`);
+        const [fluency, accuracy, style] = await Promise.all([
+            this.reviewFluency(markdownContent, draft, (c) => onChunk?.('review_fluency', c)),
+            this.reviewAccuracy(markdownContent, draft, (c) => onChunk?.('review_accuracy', c)),
+            this.reviewStyle(markdownContent, draft, (c) => onChunk?.('review_style', c))
+        ]);
+        onProgress?.('review_fluency', fluency);
+        onProgress?.('review_accuracy', accuracy);
+        onProgress?.('review_style', style);
+
+        console.log(`[Translator] Stage 3: Synthesis...`);
+        const synth = await this.synthesizeReviews(markdownContent, draft, { fluency, accuracy, style }, (c) => onChunk?.('synthesis', c));
+        onProgress?.('synthesis', synth);
+
+        console.log(`[Translator] Stage 4: Final Polish...`);
+        const finalContent = await this.finalPolish(synth, (c) => onChunk?.('final', c));
+        onProgress?.('final', finalContent);
 
         return {
-            literalTranslation: literal,
-            refinedTranslation: refined
+            draftTranslation: draft,
+            reviews: { fluency, accuracy, style },
+            synthesizedTranslation: synth,
+            finalTranslation: finalContent
         };
     }
 }

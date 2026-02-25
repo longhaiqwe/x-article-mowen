@@ -1,6 +1,6 @@
-import { XScraper } from './libs/scraper';
-import { Translator } from './libs/translator';
-import { MowenPublisher } from './libs/mowen';
+import { XScraper } from './libs/scraper.js';
+import { Translator } from './libs/translator.js';
+import { MowenPublisher } from './libs/mowen.js';
 import * as dotenv from 'dotenv';
 
 dotenv.config();
@@ -42,15 +42,15 @@ async function main() {
     // Note: If the text is extremely long (e.g. 50,000 words), it may exceed token limits.
     // In a production environment, you would split the markdown into chunks here before passing to translator.
     const translatedData = await translator.translateMarkdown(scrapedData.markdownContent);
-    console.log(`✅ Literal Translation: ${translatedData.literalTranslation.length} chars`);
-    console.log(`✅ Refined Translation: ${translatedData.refinedTranslation.length} chars\n`);
+    console.log(`✅ Draft Translation: ${translatedData.draftTranslation.length} chars`);
+    console.log(`✅ Final Polish Translation: ${translatedData.finalTranslation.length} chars\n`);
 
     // 3. Publish to Mowen
     console.log('--- Phase 3: Mowen Publisher ---');
     if (!MOWEN_API_KEY) {
         console.log('⏭️ Skipping publish step because MOWEN_API_KEY is not set.');
         console.log('\nFinal Refined Output Preview:\n');
-        console.log(translatedData.refinedTranslation.substring(0, 1000) + '...\n');
+        console.log(translatedData.finalTranslation.substring(0, 1000) + '...\n');
         return;
     }
 
@@ -60,7 +60,7 @@ async function main() {
     const translatedTitle = `${scrapedData.title} (中文翻译)`;
 
     try {
-        const publishResult = await publisher.publishNote(translatedTitle, translatedData.refinedTranslation);
+        const publishResult = await publisher.publishNote(translatedTitle, translatedData.finalTranslation);
         console.log('✅ Publication Workflow Completed Successfully!');
     } catch (e) {
         console.error('❌ Failed to publish to Mowen:', (e as Error).message);
