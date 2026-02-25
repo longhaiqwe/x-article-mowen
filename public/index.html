@@ -263,15 +263,11 @@
 
     /* ── Pipeline ── */
     .pipeline {
-      display: none;
       margin-bottom: 28px;
       background: var(--bg1);
       border: 1px solid var(--line);
       border-radius: var(--radius);
       overflow: hidden;
-    }
-
-    .pipeline.visible {
       display: flex;
     }
 
@@ -349,6 +345,7 @@
       color: var(--ink4);
       letter-spacing: .05em;
       transition: color .3s;
+      flex: 1;
     }
 
     .pipe-step.active .pipe-label {
@@ -372,6 +369,49 @@
 
     .pipe-step.active .pipe-spinner {
       display: block;
+    }
+
+    /* 步骤触发按钮 */
+    .pipe-btn {
+      font-family: var(--mono);
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: .08em;
+      padding: 4px 10px;
+      border-radius: 3px;
+      border: 1.5px solid var(--line2);
+      background: transparent;
+      color: var(--ink4);
+      cursor: not-allowed;
+      opacity: .45;
+      transition: all .2s;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+
+    .pipe-btn.ready {
+      border-color: var(--rust);
+      color: var(--rust);
+      cursor: pointer;
+      opacity: 1;
+    }
+
+    .pipe-btn.ready:hover {
+      background: var(--rust-bg);
+    }
+
+    .pipe-btn.running {
+      border-color: var(--rust);
+      color: var(--rust);
+      cursor: not-allowed;
+      opacity: .7;
+    }
+
+    .pipe-btn.done-btn {
+      border-color: var(--sage);
+      color: var(--sage);
+      opacity: .7;
+      cursor: default;
     }
 
     @keyframes spin {
@@ -728,21 +768,25 @@
         <div class="pipe-num">01</div>
         <div class="pipe-spinner"></div>
         <div class="pipe-label">SCRAPE</div>
+        <button class="pipe-btn" id="btn-scrape" onclick="runScrape()">RUN</button>
       </div>
       <div class="pipe-step" id="ps-translating">
         <div class="pipe-num">02</div>
         <div class="pipe-spinner"></div>
         <div class="pipe-label">TRANSLATE</div>
+        <button class="pipe-btn" id="btn-translate" onclick="runTranslate()">RUN</button>
       </div>
       <div class="pipe-step" id="ps-refining">
         <div class="pipe-num">03</div>
         <div class="pipe-spinner"></div>
         <div class="pipe-label">REFINE</div>
+        <button class="pipe-btn" id="btn-refine" onclick="runRefine()">RUN</button>
       </div>
       <div class="pipe-step" id="ps-publishing">
         <div class="pipe-num">04</div>
         <div class="pipe-spinner"></div>
         <div class="pipe-label">PUBLISH</div>
+        <button class="pipe-btn" id="btn-publish" onclick="runPublish()">RUN</button>
       </div>
     </div>
 
@@ -818,69 +862,33 @@
   </div>
 
   <script>
-    let sse = null;
+    // ── 状态 ────────────────────────────────────────────
+    let currentUrl = '';
+    let originalMarkdown = '';  // 抓取到的原文
+    let literalMarkdown = '';   // 直译结果
+    let refinedMarkdown = '';   // 润色结果
+    let articleTitle = 'X Article';
+    let currentSSE = null;
+    const streamBuf = { literal: '', refined: '' };
 
-    function startProcess() {
-      const url = document.getElementById('url-input').value.trim();
-      if (!url) return alert('请输入 X 文章链接');
-      reset();
-      document.getElementById('start-btn').disabled = true;
-      document.getElementById('start-btn').textContent = 'RUNNING…';
-      document.getElementById('pipeline').classList.add('visible');
-      setActive('scraping');
-
-      if (sse) sse.close();
-      sse = new EventSource('/process?url=' + encodeURIComponent(url));
-
-      sse.addEventListener('scraped', e => {
-        const d = JSON.parse(e.data);
-        setDone('scraping'); setActive('translating');
-        fillPanel('original', d.content, d.content.length);
-      });
-
-      sse.addEventListener('literal', e => {
-        const d = JSON.parse(e.data);
-        setDone('translating'); setActive('refining');
-        fillPanel('literal', d.content, d.content.length);
-      });
-
-      sse.addEventListener('refined', e => {
-        const d = JSON.parse(e.data);
-        setDone('refining'); setActive('publishing');
-        fillPanel('refined', d.content, d.content.length);
-      });
-
-      sse.addEventListener('published', e => {
-        const d = JSON.parse(e.data);
-        setDone('publishing');
-        showResult(d.success,
-          d.success ? 'PUBLISH COMPLETE — NON-PUBLIC' : 'PUBLISH FAILED',
-          d.noteId ? `NoteID: ${d.noteId}　${d.message}` : d.message);
-      });
-
-      sse.addEventListener('error', e => {
-        let msg = 'Unknown error';
-        try { msg = JSON.parse(e.data).message; } catch { }
-        showResult(false, 'PIPELINE ERROR', msg);
-        done();
-      });
-
-      sse.addEventListener('done', () => done());
-      sse.onerror = () => { if (sse.readyState === EventSource.CLOSED) done(); };
+    // ── 工具函数 ─────────────────────────────────────────
+    function setActive(n) { document.getElementById('ps-' + n).className = 'pipe-step active'; }
+    function setDone(n) {
+      const el = document.getElementById('ps-' + n);
+      el.className = 'pipe-step done';
+      el.querySelector('.pipe-num').textContent = '✓';
     }
-
-    function reset() {
-      ['original', 'literal', 'refined'].forEach(id => {
-        document.getElementById('pnl-' + id).classList.remove('lit');
-        document.getElementById('ch-' + id).textContent = '';
-        const labels = { original: 'Awaiting scrape…', literal: 'Awaiting translation…', refined: 'Awaiting refinement…' };
-        document.getElementById('bd-' + id).innerHTML =
-          `<div class="placeholder"><div class="placeholder-glyph">❒</div><div class="placeholder-text">${labels[id]}</div></div>`;
-      });
-      document.getElementById('result-banner').className = 'result-banner';
-      ['scraping', 'translating', 'refining', 'publishing'].forEach(s =>
-        document.getElementById('ps-' + s).className = 'pipe-step');
-      document.getElementById('pipeline').classList.remove('visible');
+    function setReady(btnId) {
+      const btn = document.getElementById(btnId);
+      if (btn) btn.className = 'pipe-btn ready';
+    }
+    function setBtnRunning(btnId) {
+      const btn = document.getElementById(btnId);
+      if (btn) { btn.className = 'pipe-btn running'; btn.textContent = '...'; }
+    }
+    function setBtnDone(btnId) {
+      const btn = document.getElementById(btnId);
+      if (btn) { btn.className = 'pipe-btn done-btn'; btn.textContent = '✓'; }
     }
 
     function fillPanel(id, markdown, chars) {
@@ -888,13 +896,6 @@
       document.getElementById('ch-' + id).textContent = chars.toLocaleString() + ' ch';
       document.getElementById('bd-' + id).innerHTML =
         `<div class="md">${marked.parse(markdown)}</div>`;
-    }
-
-    function setActive(n) { document.getElementById('ps-' + n).className = 'pipe-step active'; }
-    function setDone(n) {
-      const el = document.getElementById('ps-' + n);
-      el.className = 'pipe-step done';
-      el.querySelector('.pipe-num').textContent = '✓';
     }
 
     function showResult(ok, title, body) {
@@ -905,14 +906,221 @@
       document.getElementById('res-body').textContent = body;
     }
 
-    function done() {
-      if (sse) { sse.close(); sse = null; }
-      document.getElementById('start-btn').disabled = false;
-      document.getElementById('start-btn').textContent = 'EXECUTE →';
+    function closeSSE() {
+      if (currentSSE) { currentSSE.close(); currentSSE = null; }
     }
 
+    // ── Step 0: URL 填入后初始化 pipeline ────────────────
+    function initPipeline() {
+      const url = document.getElementById('url-input').value.trim();
+      if (!url) return;
+      currentUrl = url;
+      // 重置所有状态
+      originalMarkdown = ''; literalMarkdown = ''; refinedMarkdown = '';
+      streamBuf.literal = ''; streamBuf.refined = '';
+      document.getElementById('pipeline').style.display = 'flex';
+
+      // 重置 pipe 步骤样式
+      ['scraping', 'translating', 'refining', 'publishing'].forEach(s => {
+        document.getElementById('ps-' + s).className = 'pipe-step';
+        const numEl = document.getElementById('ps-' + s).querySelector('.pipe-num');
+        numEl.textContent = { scraping: '01', translating: '02', refining: '03', publishing: '04' }[s];
+      });
+      // 重置按钮
+      ['btn-scrape', 'btn-translate', 'btn-refine', 'btn-publish'].forEach(id => {
+        const btn = document.getElementById(id);
+        btn.className = 'pipe-btn'; btn.textContent = 'RUN';
+      });
+      // 重置面板
+      ['original', 'literal', 'refined'].forEach(id => {
+        document.getElementById('pnl-' + id).classList.remove('lit');
+        document.getElementById('ch-' + id).textContent = '';
+        const labels = { original: 'Awaiting scrape…', literal: 'Awaiting translation…', refined: 'Awaiting refinement…' };
+        document.getElementById('bd-' + id).innerHTML =
+          `<div class="placeholder"><div class="placeholder-glyph">❒</div><div class="placeholder-text">${labels[id]}</div></div>`;
+      });
+      document.getElementById('result-banner').className = 'result-banner';
+
+      // Step 1 立刻变为 ready
+      setReady('btn-scrape');
+    }
+
+    // ── Step 1: Scrape ───────────────────────────────────
+    function runScrape() {
+      const btn = document.getElementById('btn-scrape');
+      if (!btn.classList.contains('ready')) return;
+      closeSSE();
+      setBtnRunning('btn-scrape');
+      setActive('scraping');
+
+      currentSSE = new EventSource('/scrape?url=' + encodeURIComponent(currentUrl));
+
+      currentSSE.addEventListener('scraped', e => {
+        const d = JSON.parse(e.data);
+        originalMarkdown = d.content;
+        articleTitle = d.title || 'X Article';
+        fillPanel('original', d.content, d.content.length);
+      });
+
+      currentSSE.addEventListener('done', () => {
+        setDone('scraping');
+        setBtnDone('btn-scrape');
+        setReady('btn-translate');
+        closeSSE();
+      });
+
+      currentSSE.addEventListener('error', e => {
+        let msg = 'Unknown error';
+        try { msg = JSON.parse(e.data).message; } catch { }
+        showResult(false, 'SCRAPE ERROR', msg);
+        document.getElementById('btn-scrape').className = 'pipe-btn ready';
+        document.getElementById('btn-scrape').textContent = 'RETRY';
+        closeSSE();
+      });
+
+      currentSSE.onerror = () => { if (currentSSE && currentSSE.readyState === EventSource.CLOSED) closeSSE(); };
+    }
+
+    // ── Step 2: Translate ────────────────────────────────
+    function runTranslate() {
+      const btn = document.getElementById('btn-translate');
+      if (!btn.classList.contains('ready')) return;
+      closeSSE();
+      setBtnRunning('btn-translate');
+      setActive('translating');
+      streamBuf.literal = '';
+
+      // SSE 通过 fetch+ReadableStream 读取（POST SSE）
+
+      listenSSE('/translate', { markdown: originalMarkdown }, {
+        literal_chunk: (data) => {
+          const { chunk } = data;
+          if (!streamBuf.literal) {
+            document.getElementById('pnl-literal').classList.add('lit');
+            document.getElementById('bd-literal').innerHTML = '<div class="md" id="md-literal"></div>';
+          }
+          streamBuf.literal += chunk;
+          document.getElementById('md-literal').innerHTML = marked.parse(streamBuf.literal);
+          document.getElementById('ch-literal').textContent = streamBuf.literal.length.toLocaleString() + ' ch';
+        },
+        literal: (data) => {
+          literalMarkdown = data.content;
+        },
+        done: () => {
+          setDone('translating');
+          setBtnDone('btn-translate');
+          setReady('btn-refine');
+        },
+        error: (data) => {
+          showResult(false, 'TRANSLATE ERROR', data.message);
+          document.getElementById('btn-translate').className = 'pipe-btn ready';
+          document.getElementById('btn-translate').textContent = 'RETRY';
+        }
+      });
+    }
+
+    // ── Step 3: Refine ───────────────────────────────────
+    function runRefine() {
+      const btn = document.getElementById('btn-refine');
+      if (!btn.classList.contains('ready')) return;
+      setBtnRunning('btn-refine');
+      setActive('refining');
+      streamBuf.refined = '';
+
+      listenSSE('/refine', { original: originalMarkdown, literal: literalMarkdown }, {
+        refined_chunk: (data) => {
+          const { chunk } = data;
+          if (!streamBuf.refined) {
+            document.getElementById('pnl-refined').classList.add('lit');
+            document.getElementById('bd-refined').innerHTML = '<div class="md" id="md-refined"></div>';
+          }
+          streamBuf.refined += chunk;
+          document.getElementById('md-refined').innerHTML = marked.parse(streamBuf.refined);
+          document.getElementById('ch-refined').textContent = streamBuf.refined.length.toLocaleString() + ' ch';
+        },
+        refined: (data) => {
+          refinedMarkdown = data.content;
+        },
+        done: () => {
+          setDone('refining');
+          setBtnDone('btn-refine');
+          setReady('btn-publish');
+        },
+        error: (data) => {
+          showResult(false, 'REFINE ERROR', data.message);
+          document.getElementById('btn-refine').className = 'pipe-btn ready';
+          document.getElementById('btn-refine').textContent = 'RETRY';
+        }
+      });
+    }
+
+    // ── Step 4: Publish ──────────────────────────────────
+    function runPublish() {
+      const btn = document.getElementById('btn-publish');
+      if (!btn.classList.contains('ready')) return;
+      setBtnRunning('btn-publish');
+      setActive('publishing');
+
+      const title = articleTitle + ' (中文翻译)';
+      listenSSE('/publish', { title, markdown: refinedMarkdown }, {
+        published: (data) => {
+          setDone('publishing');
+          setBtnDone('btn-publish');
+          showResult(data.success,
+            data.success ? 'PUBLISH COMPLETE' : 'PUBLISH FAILED',
+            data.noteId ? `NoteID: ${data.noteId}   ${data.message}` : data.message);
+        },
+        error: (data) => {
+          showResult(false, 'PUBLISH ERROR', data.message);
+          document.getElementById('btn-publish').className = 'pipe-btn ready';
+          document.getElementById('btn-publish').textContent = 'RETRY';
+        }
+      });
+    }
+
+    // ── SSE-over-POST 通用读取器 ──────────────────────────
+    // EventSource 只支持 GET，所以用 fetch + ReadableStream 手动解析 SSE
+    async function listenSSE(endpoint, body, handlers) {
+      try {
+        const resp = await fetch(endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        });
+        const reader = resp.body.getReader();
+        const decoder = new TextDecoder();
+        let buf = '';
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buf += decoder.decode(value, { stream: true });
+          const parts = buf.split('\n\n');
+          buf = parts.pop(); // 最后一段可能不完整
+          for (const part of parts) {
+            if (!part.trim()) continue;
+            let eventName = 'message';
+            let dataStr = '';
+            for (const line of part.split('\n')) {
+              if (line.startsWith('event: ')) eventName = line.slice(7).trim();
+              else if (line.startsWith('data: ')) dataStr = line.slice(6).trim();
+            }
+            if (handlers[eventName]) {
+              try { handlers[eventName](JSON.parse(dataStr)); } catch { }
+            }
+          }
+        }
+      } catch (err) {
+        handlers.error?.({ message: err.message });
+      }
+    }
+
+    // ── URL 输入监听 ─────────────────────────────────────
+    document.getElementById('url-input').addEventListener('input', () => {
+      const url = document.getElementById('url-input').value.trim();
+      if (url) initPipeline();
+    });
     document.getElementById('url-input').addEventListener('keydown', e => {
-      if (e.key === 'Enter') startProcess();
+      if (e.key === 'Enter') runScrape();
     });
   </script>
 

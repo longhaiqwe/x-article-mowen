@@ -6,6 +6,7 @@ export interface TranslationResult {
 }
 
 export type TranslationProgressCallback = (stage: 'literal' | 'refined', content: string) => void;
+export type TranslationChunkCallback = (stage: 'literal' | 'refined', chunk: string) => void;
 
 export class Translator {
     private openai: OpenAI;
@@ -20,36 +21,21 @@ export class Translator {
     }
 
     /**
-     * Translates the markdown context into localized Chinese 
-     * using a 2-step reflection workflow (Literal -> Refinement)
+     * 流式直译，每个 chunk 通过 onChunk 回调推送
      */
-    public async translateMarkdown(
-        markdownContent: string,
-        onProgress?: TranslationProgressCallback
-    ): Promise<TranslationResult> {
-        console.log(`[Translator] Starting literal translation logic...`);
-        const literal = await this.literalTranslate(markdownContent);
-        onProgress?.('literal', literal);
-
-        console.log(`[Translator] Starting refinement and formatting logic...`);
-        const refined = await this.refineTranslation(markdownContent, literal);
-        onProgress?.('refined', refined);
-
-        return {
-            literalTranslation: literal,
-            refinedTranslation: refined
-        };
-    }
-
-    public async literalTranslate(content: string): Promise<string> {
+    public async literalTranslateStream(
+        content: string,
+        onChunk: (chunk: string) => void
+    ): Promise<string> {
         const systemPrompt = `你是一个专业的技术与商业文章翻译官。请将下方用户提供的包含 Markdown 格式的英文原文直接翻译为中文。
 要求：
 1. 必须忠实于原文，不要增加原本不存在的信息，也不要删减细节。
 2. 保持原有的 Markdown 格式（如标题、由于加粗、图片链接、超链接等）必须一丝不差地保留在译文的相应位置。
 3. 对于专有名词和术语，尽量使用行业内常用的中文表达。`;
 
-        const response = await this.openai.chat.completions.create({
+        const stream = await this.openai.chat.completions.create({
             model: this.model,
+            stream: true,
             messages: [
                 { role: 'system', content: systemPrompt },
                 { role: 'user', content }
@@ -57,10 +43,25 @@ export class Translator {
             temperature: 0.3,
         });
 
-        return response.choices[0]?.message.content || '';
+        let full = '';
+        for await (const chunk of stream) {
+            const delta = chunk.choices[0]?.delta?.content || '';
+            if (delta) {
+                full += delta;
+                onChunk(delta);
+            }
+        }
+        return full;
     }
 
-    public async refineTranslation(sourceText: string, literalText: string): Promise<string> {
+    /**
+     * 流式润色，每个 chunk 通过 onChunk 回调推送
+     */
+    public async refineTranslationStream(
+        sourceText: string,
+        literalText: string,
+        onChunk: (chunk: string) => void
+    ): Promise<string> {
         const systemPrompt = `你是一个资深的中文作家和文字编辑。我给你一段英文原文和对应的中文直译稿。你需要对直译稿进行深度润色，使其读起来就像是中文母语者写出的一篇高质量文章。
 
 要求：
@@ -71,8 +72,9 @@ export class Translator {
 
         const userPrompt = `【英文原文】\n${sourceText}\n\n【中文直译】\n${literalText}\n\n请输出仅包含润色后内容的完整 Markdown：`;
 
-        const response = await this.openai.chat.completions.create({
+        const stream = await this.openai.chat.completions.create({
             model: this.model,
+            stream: true,
             messages: [
                 { role: 'system', content: systemPrompt },
                 { role: 'user', content: userPrompt }
@@ -80,6 +82,59 @@ export class Translator {
             temperature: 0.6,
         });
 
-        return response.choices[0]?.message.content || '';
+        let full = '';
+        for await (const chunk of stream) {
+            const delta = chunk.choices[0]?.delta?.content || '';
+            if (delta) {
+                full += delta;
+                onChunk(delta);
+            }
+        }
+        return full;
+    }
+
+    /**
+     * 单独润色（流式）——用于调试模式下步骤 3 单独触发
+     * @param original 英文原文 markdown
+     * @param literal  直译后的 markdown
+     */
+    public async refineMarkdown(
+        original: string,
+        literal: string,
+        onComplete?: (content: string) => void,
+        onChunk?: (chunk: string) => void
+    ): Promise<string> {
+        console.log(`[Translator] Starting standalone refinement (streaming)...`);
+        const refined = await this.refineTranslationStream(original, literal, (chunk) => {
+            onChunk?.(chunk);
+        });
+        onComplete?.(refined);
+        return refined;
+    }
+
+    /**
+     * 完整翻译流程（流式），通过 onChunk 实时推送每个阶段的增量内容
+     */
+    public async translateMarkdown(
+        markdownContent: string,
+        onProgress?: TranslationProgressCallback,
+        onChunk?: TranslationChunkCallback
+    ): Promise<TranslationResult> {
+        console.log(`[Translator] Starting literal translation (streaming)...`);
+        const literal = await this.literalTranslateStream(markdownContent, (chunk) => {
+            onChunk?.('literal', chunk);
+        });
+        onProgress?.('literal', literal);
+
+        console.log(`[Translator] Starting refinement (streaming)...`);
+        const refined = await this.refineTranslationStream(markdownContent, literal, (chunk) => {
+            onChunk?.('refined', chunk);
+        });
+        onProgress?.('refined', refined);
+
+        return {
+            literalTranslation: literal,
+            refinedTranslation: refined
+        };
     }
 }
