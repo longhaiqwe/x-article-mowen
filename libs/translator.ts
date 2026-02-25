@@ -1,5 +1,14 @@
 import OpenAI from 'openai';
 
+export interface ModelConfig {
+    draft: string;
+    reviewFluency: string;
+    reviewAccuracy: string;
+    reviewStyle: string;
+    synthesis: string;
+    final: string;
+}
+
 export interface TranslationResult {
     draftTranslation: string;
     reviews: {
@@ -23,18 +32,23 @@ export type TranslationChunkCallback = (
 
 export class Translator {
     private openai: OpenAI;
-    private model: string;
+    private models: ModelConfig;
+    private apiKey: string;
+    private baseURL: string;
 
-    constructor(apiKey: string, baseURL?: string, model: string = 'gpt-4o') {
+    constructor(apiKey: string, baseURL: string, models: ModelConfig) {
         this.openai = new OpenAI({
             apiKey: apiKey,
             baseURL: baseURL,
         });
-        this.model = model;
+        this.models = models;
+        this.apiKey = apiKey;
+        this.baseURL = baseURL;
     }
 
     /**
      * 阶段 1：初步改写 (Draft Translation)
+     * 使用模型：Doubao-Seed-1.6 (Chat Completions API)
      */
     public async draftTranslate(
         content: string,
@@ -51,29 +65,12 @@ export class Translator {
 
         const userPrompt = `**英文原文：**\n\n${content}`;
 
-        const stream = await this.openai.chat.completions.create({
-            model: this.model,
-            stream: true,
-            messages: [
-                { role: 'system', content: systemPrompt },
-                { role: 'user', content: userPrompt }
-            ],
-            temperature: 0.7,
-        });
-
-        let full = '';
-        for await (const chunk of stream) {
-            const delta = chunk.choices[0]?.delta?.content || '';
-            if (delta) {
-                full += delta;
-                onChunk?.(delta);
-            }
-        }
-        return full;
+        return this.streamChat(this.models.draft, systemPrompt, userPrompt, onChunk);
     }
 
     /**
      * 阶段 2: 语言流畅性与地道性评审 (Review 1)
+     * 使用模型：GLM-4.7
      */
     public async reviewFluency(
         original: string,
@@ -91,11 +88,12 @@ export class Translator {
 **输出要求：**
 指出问题并在不需要改变原意的基础上给出明确具体的修改建议。只输出建议内容。`;
 
-        return this.runReviewStream(systemPrompt, original, draft, onChunk);
+        return this.runReviewStream(this.models.reviewFluency, systemPrompt, original, draft, onChunk);
     }
 
     /**
      * 阶段 2: 内容准确性与逻辑性评审 (Review 2)
+     * 使用模型：DeepSeek-V3.2
      */
     public async reviewAccuracy(
         original: string,
@@ -113,11 +111,12 @@ export class Translator {
 **输出要求：**
 指出问题并给出明确具体的改善建议。只输出建议内容。`;
 
-        return this.runReviewStream(systemPrompt, original, draft, onChunk);
+        return this.runReviewStream(this.models.reviewAccuracy, systemPrompt, original, draft, onChunk);
     }
 
     /**
      * 阶段 2: 风格一致性与目标读者适配性评审 (Review 3)
+     * 使用模型：Kimi-K2
      */
     public async reviewStyle(
         original: string,
@@ -135,38 +134,21 @@ export class Translator {
 **输出要求：**
 指出问题并给出明确具体的完善建议。只输出建议内容。`;
 
-        return this.runReviewStream(systemPrompt, original, draft, onChunk);
+        return this.runReviewStream(this.models.reviewStyle, systemPrompt, original, draft, onChunk);
     }
 
-    private async runReviewStream(systemPrompt: string, original: string, draft: string, onChunk?: (chunk: string) => void): Promise<string> {
+    private async runReviewStream(model: string, systemPrompt: string, original: string, draft: string, onChunk?: (chunk: string) => void): Promise<string> {
         const userPrompt = `<article>
   <source lang="en"><content><![CDATA[${original}]]></content></source>
   <rewritten lang="zh"><draft><![CDATA[${draft}]]></draft></rewritten>
 </article>`;
 
-        const stream = await this.openai.chat.completions.create({
-            model: this.model,
-            stream: true,
-            messages: [
-                { role: 'system', content: systemPrompt },
-                { role: 'user', content: userPrompt }
-            ],
-            temperature: 0.7,
-        });
-
-        let full = '';
-        for await (const chunk of stream) {
-            const delta = chunk.choices[0]?.delta?.content || '';
-            if (delta) {
-                full += delta;
-                onChunk?.(delta);
-            }
-        }
-        return full;
+        return this.streamChat(model, systemPrompt, userPrompt, onChunk);
     }
 
     /**
      * 阶段 3: 综合改进 (Synthesis)
+     * 使用模型：DeepSeek-V3.2
      */
     public async synthesizeReviews(
         original: string,
@@ -196,29 +178,12 @@ export class Translator {
   </rewritten>
 </article>`;
 
-        const stream = await this.openai.chat.completions.create({
-            model: this.model,
-            stream: true,
-            messages: [
-                { role: 'system', content: systemPrompt },
-                { role: 'user', content: userPrompt }
-            ],
-            temperature: 0.7,
-        });
-
-        let full = '';
-        for await (const chunk of stream) {
-            const delta = chunk.choices[0]?.delta?.content || '';
-            if (delta) {
-                full += delta;
-                onChunk?.(delta);
-            }
-        }
-        return full;
+        return this.streamChat(this.models.synthesis, systemPrompt, userPrompt, onChunk);
     }
 
     /**
      * 阶段 4: 最终润色 (Final Polish)
+     * 使用模型：Doubao-Seed-1.6
      */
     public async finalPolish(
         synthesizedText: string,
@@ -234,8 +199,22 @@ export class Translator {
 
         const userPrompt = `<article>\n<rewritten lang="zh">\n<revised><![CDATA[${synthesizedText}]]></revised>\n</rewritten>\n</article>`;
 
+        return this.streamChat(this.models.final, systemPrompt, userPrompt, onChunk);
+    }
+
+
+
+    /**
+     * 通用流式对话方法 (Chat Completions API)
+     */
+    private async streamChat(
+        model: string,
+        systemPrompt: string,
+        userPrompt: string,
+        onChunk?: (chunk: string) => void
+    ): Promise<string> {
         const stream = await this.openai.chat.completions.create({
-            model: this.model,
+            model: model,
             stream: true,
             messages: [
                 { role: 'system', content: systemPrompt },
@@ -264,11 +243,11 @@ export class Translator {
         onChunk?: TranslationChunkCallback
     ): Promise<TranslationResult> {
 
-        console.log(`[Translator] Stage 1: Draft Translation...`);
+        console.log(`[Translator] Stage 1: Draft Translation (${this.models.draft})...`);
         const draft = await this.draftTranslate(markdownContent, (c) => onChunk?.('draft', c));
         onProgress?.('draft', draft);
 
-        console.log(`[Translator] Stage 2: Parallel Reviews...`);
+        console.log(`[Translator] Stage 2: Parallel Reviews (${this.models.reviewFluency} / ${this.models.reviewAccuracy} / ${this.models.reviewStyle})...`);
         const [fluency, accuracy, style] = await Promise.all([
             this.reviewFluency(markdownContent, draft, (c) => onChunk?.('review_fluency', c)),
             this.reviewAccuracy(markdownContent, draft, (c) => onChunk?.('review_accuracy', c)),
@@ -278,11 +257,11 @@ export class Translator {
         onProgress?.('review_accuracy', accuracy);
         onProgress?.('review_style', style);
 
-        console.log(`[Translator] Stage 3: Synthesis...`);
+        console.log(`[Translator] Stage 3: Synthesis (${this.models.synthesis})...`);
         const synth = await this.synthesizeReviews(markdownContent, draft, { fluency, accuracy, style }, (c) => onChunk?.('synthesis', c));
         onProgress?.('synthesis', synth);
 
-        console.log(`[Translator] Stage 4: Final Polish...`);
+        console.log(`[Translator] Stage 4: Final Polish (${this.models.final})...`);
         const finalContent = await this.finalPolish(synth, (c) => onChunk?.('final', c));
         onProgress?.('final', finalContent);
 

@@ -5,6 +5,7 @@ import { fileURLToPath } from 'url';
 import * as dotenv from 'dotenv';
 import { XScraper } from './libs/scraper.js';
 import { Translator } from './libs/translator.js';
+import type { ModelConfig } from './libs/translator.js';
 import { MowenPublisher } from './libs/mowen.js';
 
 dotenv.config();
@@ -12,9 +13,16 @@ dotenv.config();
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const X_COOKIE = process.env.X_COOKIE || '';
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY || '';
-const OPENAI_BASE_URL = process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1';
-const OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-4o';
+const ARK_API_KEY = process.env.ARK_API_KEY || '';
+const ARK_BASE_URL = process.env.ARK_BASE_URL || 'https://ark.cn-beijing.volces.com/api/v3';
+const ARK_MODELS: ModelConfig = {
+    draft: process.env.ARK_MODEL_DRAFT || 'doubao-seed-translation-250915',
+    reviewFluency: process.env.ARK_MODEL_REVIEW_FLUENCY || 'glm-4-7-251222',
+    reviewAccuracy: process.env.ARK_MODEL_REVIEW_ACCURACY || 'deepseek-v3-2-251201',
+    reviewStyle: process.env.ARK_MODEL_REVIEW_STYLE || 'kimi-k2-thinking-251104',
+    synthesis: process.env.ARK_MODEL_SYNTHESIS || 'deepseek-v3-2-251201',
+    final: process.env.ARK_MODEL_FINAL || 'doubao-seed-1-6-251015',
+};
 const MOWEN_API_KEY = process.env.MOWEN_API_KEY || '';
 const MOWEN_SPACE_ID = process.env.MOWEN_SPACE_ID || '';
 
@@ -71,7 +79,7 @@ async function handleDraft(markdown: string, res: http.ServerResponse) {
     initSSE(res);
     try {
         sendEvent(res, 'status', { message: '开始初步改写...' });
-        const translator = new Translator(OPENAI_API_KEY, OPENAI_BASE_URL, OPENAI_MODEL);
+        const translator = new Translator(ARK_API_KEY, ARK_BASE_URL, ARK_MODELS);
 
         const draft = await translator.draftTranslate(
             markdown,
@@ -91,7 +99,7 @@ async function handleReview(original: string, draft: string, res: http.ServerRes
     initSSE(res);
     try {
         sendEvent(res, 'status', { message: '开始并行评审...' });
-        const translator = new Translator(OPENAI_API_KEY, OPENAI_BASE_URL, OPENAI_MODEL);
+        const translator = new Translator(ARK_API_KEY, ARK_BASE_URL, ARK_MODELS);
 
         const [fluency, accuracy, style] = await Promise.all([
             translator.reviewFluency(original, draft, (c) => sendEvent(res, 'stage_chunk', { stage: 'review_fluency', chunk: c })),
@@ -113,7 +121,7 @@ async function handleSynthesis(original: string, draft: string, reviews: { fluen
     initSSE(res);
     try {
         sendEvent(res, 'status', { message: '开始综合改写...' });
-        const translator = new Translator(OPENAI_API_KEY, OPENAI_BASE_URL, OPENAI_MODEL);
+        const translator = new Translator(ARK_API_KEY, ARK_BASE_URL, ARK_MODELS);
 
         const synth = await translator.synthesizeReviews(
             original,
@@ -135,7 +143,7 @@ async function handleFinalPolish(synth: string, res: http.ServerResponse) {
     initSSE(res);
     try {
         sendEvent(res, 'status', { message: '开始最终润色...' });
-        const translator = new Translator(OPENAI_API_KEY, OPENAI_BASE_URL, OPENAI_MODEL);
+        const translator = new Translator(ARK_API_KEY, ARK_BASE_URL, ARK_MODELS);
 
         const finalContent = await translator.finalPolish(
             synth,
