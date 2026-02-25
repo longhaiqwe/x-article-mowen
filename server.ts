@@ -25,6 +25,7 @@ const ARK_MODELS: ModelConfig = {
 };
 const MOWEN_API_KEY = process.env.MOWEN_API_KEY || '';
 const MOWEN_SPACE_ID = process.env.MOWEN_SPACE_ID || '';
+const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL || 'http://localhost:11434/api'; // 例如 'http://localhost:11434/v1' 也可以兼容 openai SDK
 
 const PORT = 3000;
 
@@ -165,6 +166,7 @@ async function handleParagraphTranslate(markdown: string, res: http.ServerRespon
         sendEvent(res, 'status', { message: '开始逐段分析与翻译...' });
         const translator = new Translator(ARK_API_KEY, ARK_BASE_URL, ARK_MODELS);
 
+        // 如果有 url flag 参数，比如 mode=ollama，可以传给 translateByParagraphs
         const result = await translator.translateByParagraphs(
             markdown,
             (event, data) => sendEvent(res, event, data),
@@ -274,9 +276,32 @@ const server = http.createServer(async (req, res) => {
     // Step 5.5: POST /process/paragraph-translate
     if (pathname === '/process/paragraph-translate' && req.method === 'POST') {
         const body = await readBody(req);
-        const { markdown } = JSON.parse(body);
+        const { markdown, backend } = JSON.parse(body);
         if (!markdown) { res.writeHead(400); res.end(JSON.stringify({ error: 'Missing markdown payload' })); return; }
-        await handleParagraphTranslate(markdown, res);
+
+        initSSE(res);
+        try {
+            sendEvent(res, 'status', { message: `开始逐段分析与翻译 (${backend === 'ollama' ? '本地 Ollama' : '云端模型'})...` });
+
+            // 我们只需要传标记即可，Translator 的实现会通过第四个参数将首步直译重发给 Ollama，
+            // 而保留问题分析、意译和修饰发往默认大模型 (Volcengine/DeepSeek)。
+            let activeTranslator = new Translator(ARK_API_KEY, ARK_BASE_URL, ARK_MODELS);
+            // 为了简单直接，我们可以把 backend 标记传进 translator (或者在这里修改 translator)
+            // 修改 Translator 以支持局部切本地模型
+            const result = await activeTranslator.translateByParagraphs(
+                markdown,
+                (event, data) => sendEvent(res, event, data),
+                (index, step, chunk) => sendEvent(res, 'paragraph_chunk', { index, step, chunk }),
+                backend === 'ollama' ? 'hf.co/mradermacher/translategemma-4b-it-GGUF' : undefined // 如果有需要本地的就在这个参数传
+            );
+
+            sendEvent(res, 'stage_complete', { stage: 'paragraph_translate', content: result.finalArticle });
+            sendEvent(res, 'done', { message: '逐段翻译完成' });
+        } catch (e) {
+            sendEvent(res, 'error', { message: `逐段翻译失败：${(e as Error).message}` });
+        } finally {
+            res.end();
+        }
         return;
     }
 

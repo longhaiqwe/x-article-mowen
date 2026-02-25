@@ -264,7 +264,8 @@ export class Translator {
      */
     public async translateParagraph(
         paragraph: string,
-        onChunk?: (chunk: string) => void
+        onChunk?: (chunk: string) => void,
+        localDraftModel?: string
     ): Promise<{ literal: string; issues: string; freeTranslation: string }> {
         const commonRules = `规则：
 - 翻译时要准确传达原文的事实和背景。
@@ -289,11 +290,37 @@ export class Translator {
   * API -> API
   * AI -> AI`;
 
-        // ── 步骤 1：直译 (使用统一高质量模型，如 DeepSeek) ──
+        // ── 步骤 1：直译 (支持本地 Ollama 切入) ──
         const step1System = `你是一位精通简体中文的专业翻译。请将以下英文文本块（可能包含多段）直译成中文，保持原有格式，绝对不要遗漏任何信息。\n\n${commonRules}\n\n只需直接输出直译结果，不要包含任何前缀、解释或多余的标记。`;
         // 为前端展示组装 chunk
         onChunk?.('### 直译\n');
-        const literal = await this.streamChat(this.models.synthesis, step1System, paragraph, onChunk);
+
+        let literal = '';
+        if (localDraftModel) {
+            // 使用临时内联的客户端请求本地 Ollama
+            const localOllama = new OpenAI({
+                apiKey: 'ollama',
+                baseURL: 'http://127.0.0.1:11434/v1',
+            });
+            const stream = await localOllama.chat.completions.create({
+                model: localDraftModel,
+                stream: true,
+                messages: [
+                    { role: 'system', content: step1System },
+                    { role: 'user', content: paragraph }
+                ],
+                temperature: 0.3, // 本地小模型低 temp 更稳定
+            });
+            for await (const chunk of stream) {
+                const delta = chunk.choices[0]?.delta?.content || '';
+                if (delta) {
+                    literal += delta;
+                    onChunk?.(delta);
+                }
+            }
+        } else {
+            literal = await this.streamChat(this.models.synthesis, step1System, paragraph, onChunk);
+        }
 
         // ── 步骤 2：问题分析 (使用统一高质量模型，如 DeepSeek) ──
         const step2System = `你是一位资深的校对编辑。以下是一段英文原文及其直译结果。
@@ -325,7 +352,8 @@ export class Translator {
     public async translateByParagraphs(
         content: string,
         onProgress?: ParagraphProgressCallback,
-        onChunk?: ParagraphChunkCallback
+        onChunk?: ParagraphChunkCallback,
+        localDraftModel?: string
     ): Promise<ParagraphTranslationResult> {
         // 先按双换行拆分出基本段落
         const originalParagraphs = content.split(/\n\n+/).filter(p => p.trim().length > 0);
@@ -370,7 +398,7 @@ export class Translator {
                 onChunk?.(i, currentStep, chunk);
             };
 
-            const parsed = await this.translateParagraph(paragraph, chunkTracker);
+            const parsed = await this.translateParagraph(paragraph, chunkTracker, localDraftModel);
 
             const result: ParagraphResult = {
                 index: i,

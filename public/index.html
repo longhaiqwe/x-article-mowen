@@ -773,7 +773,14 @@
       <div class="pipe-step" id="ps-draft">
         <div class="pipe-num">02</div>
         <div class="pipe-spinner"></div>
-        <div class="pipe-label">DRAFT</div>
+        <div class="pipe-label" style="display:flex; align-items:center; gap:8px;">
+          DRAFT
+          <select id="draft-backend"
+            style="font-size:10px; background:transparent; border:1px solid var(--line2); border-radius:3px; color:var(--ink3); padding:2px">
+            <option value="cloud">Cloud (DeepSeek)</option>
+            <option value="ollama">Local (TranslateGemma)</option>
+          </select>
+        </div>
         <button class="pipe-btn" id="btn-draft" onclick="runDraft()" title="整篇初稿">START</button>
         <button class="pipe-btn" id="btn-para" onclick="runParagraphTranslate()" title="逐段翻译">逐段</button>
       </div>
@@ -1044,8 +1051,9 @@
 
       let currentParaBuf = '';
       let currentFinalBuf = '';
+      const selectedBackend = document.getElementById('draft-backend') ? document.getElementById('draft-backend').value : 'cloud';
 
-      listenSSE('/process/paragraph-translate', { markdown: originalMarkdown }, {
+      listenSSE('/process/paragraph-translate', { markdown: originalMarkdown, backend: selectedBackend }, {
         paragraph_start: (data) => {
           const { index, total } = data;
           document.getElementById('md-para-rev').innerHTML = marked.parse(`**逐段/块翻译进度**\n\n正在分析处理第 **${index + 1} / ${total}** 部分...\n\n---\n> 系统将执行直译、问题分析、意译三步骤`);
