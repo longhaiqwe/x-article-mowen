@@ -27,6 +27,7 @@
   "dependencies": {
     "@prisma/client": "^6.19.2",
     "marked": "^17.0.3",
-    "ollama": "^0.6.3"
+    "ollama": "^0.6.3",
+    "puppeteer": "^24.37.5"
   }
 }

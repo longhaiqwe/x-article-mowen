@@ -52,8 +52,13 @@ export class XScraper {
 
             // Need to wait for article content to load
             console.log('Waiting for content to render...');
-            // Wait for typical tweet content div or article text block
-            await page.waitForSelector('article', { state: 'attached', timeout: 30000 });
+            // Wait for typical tweet content div or article text block, or fallback
+            // for non-X articles that might use main or body.
+            try {
+                await page.waitForSelector('article, main, body', { state: 'attached', timeout: 30000 });
+            } catch (e) {
+                console.log('Timeout waiting for specific content selector, proceeding anyway...');
+            }
 
             // Extract the DOM content for the specific article.
             // Note: X DOM is notoriously obscure. We rely on the `[data-testid="tweetText"]` 
@@ -61,28 +66,54 @@ export class XScraper {
             // For long "Articles", the DOM might use different test ids like `[data-testid="article"]`.
 
             // Attempt to get the main article block or the first tweet content
-            const articleElement = await page.$('article');
+            let articleElement = await page.$('article') ||
+                await page.$('main') ||
+                await page.$('.entry') ||
+                await page.$('.post') ||
+                await page.$('.content') ||
+                await page.$('body');
             let rawHtml = '';
             let preParsedMarkdown = '';  // set by tweetText DOM path, skips Turndown
-            let title = 'X Article'; // Fallback if no specific title is found
+            let title = '';
+            try {
+                title = await page.title();
+            } catch (e) {
+                title = 'X Article';
+            }
 
             if (articleElement) {
                 // Remove unwanted UI elements from the DOM before turndown parsing
                 await articleElement.evaluate((el: HTMLElement) => {
-                    // Remove elements that look like action bars or view counts
-                    const toRemove = el.querySelectorAll('[role="group"], [aria-label*="View"], [aria-label*="Reply"], [aria-label*="Like"], [aria-label*="Repost"]');
+                    // Remove elements that look like action bars or view counts (X specific)
+                    // and also generic noise elements: scripts, styles, footers, headers, navigations
+                    const toRemove = el.querySelectorAll(`
+                        [role="group"], [aria-label*="View"], [aria-label*="Reply"], [aria-label*="Like"], [aria-label*="Repost"],
+                        script, style, noscript, footer, header, nav, aside, 
+                        .sidebar, #sidebar, .widget, .comments, #comments
+                    `);
                     toRemove.forEach(n => n.remove());
                 });
 
                 // Extract the title from h1
-                const h1 = await articleElement.$('h1');
-                if (h1) {
-                    const h1Text = await h1.innerText();
-                    if (h1Text) {
-                        title = h1Text.trim();
-                        // Remove the h1 from the body so it isn't duplicated
-                        await h1.evaluate(node => node.remove());
+                try {
+                    const h1 = await articleElement.$('h1');
+                    if (h1) {
+                        const h1Text = await h1.innerText();
+                        if (h1Text) {
+                            title = h1Text.trim();
+                            // Remove the h1 from the body so it isn't duplicated
+                            await h1.evaluate(node => node.remove());
+                        }
+                    } else if (!title || title === 'X Article') {
+                        // try global h1 if article doesn't have it
+                        const globalH1 = await page.$('h1');
+                        if (globalH1) {
+                            const h1Text = await globalH1.innerText();
+                            if (h1Text) title = h1Text.trim();
+                        }
                     }
+                } catch (e) {
+                    console.log('Error extracting title', e);
                 }
 
                 // Custom in-browser DOM → Markdown converter for tweetText.
