@@ -10,6 +10,7 @@
     href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=IBM+Plex+Mono:wght@300;400;500;600&family=Space+Grotesk:wght@300;400;500;600&display=swap"
     rel="stylesheet" />
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
   <style>
     *,
     *::before,
@@ -979,6 +980,29 @@
   </div>
 
   <script>
+    // ── 配置 Mermaid ────────────────────────────────────
+    mermaid.initialize({ startOnLoad: false, theme: 'default' });
+    marked.use({
+      renderer: {
+        code(token, intialLang) {
+          const lang = (typeof token === 'object') ? token.lang : intialLang;
+          const text = (typeof token === 'object') ? token.text : token;
+          if (lang === 'mermaid') {
+            return '<div class="mermaid">' + text + '</div>\n';
+          }
+          return false;
+        }
+      }
+    });
+
+    function renderMermaid() {
+      try {
+        mermaid.init(undefined, document.querySelectorAll('.mermaid'));
+      } catch (err) {
+        // ignore errors during streaming
+      }
+    }
+
     // ── 状态 ────────────────────────────────────────────
     let currentUrl = '';
     let originalMarkdown = '';
@@ -1120,6 +1144,7 @@
       document.getElementById('ch-' + id).textContent = chars.toLocaleString() + ' ch';
       document.getElementById('bd-' + id).innerHTML =
         `<div class="md">${marked.parse(markdown)}</div>`;
+      renderMermaid();
     }
 
     function showResult(ok, title, body) {
@@ -1248,13 +1273,14 @@
           currentParaBuf += `**【第 ${index + 1} 部分处理过程】**\n\n`;
 
           const mdEl = document.getElementById('md-para');
-          if (mdEl) mdEl.innerHTML = marked.parse(currentParaBuf);
+          if (mdEl) { mdEl.innerHTML = marked.parse(currentParaBuf); renderMermaid(); }
         },
         paragraph_chunk: (data) => {
           currentParaBuf += data.chunk;
           const mdEl = document.getElementById('md-para');
           if (mdEl) {
             mdEl.innerHTML = marked.parse(currentParaBuf);
+            renderMermaid();
             // 保持滚动到底部
             const bdDraft = document.getElementById('bd-draft');
             if (bdDraft) bdDraft.scrollTop = bdDraft.scrollHeight;
@@ -1268,6 +1294,7 @@
           const finalEl = document.getElementById('md-para-final');
           if (finalEl) {
             finalEl.innerHTML = marked.parse(currentFinalBuf);
+            renderMermaid();
             // 自动滚动到最底部
             const bdFinal = document.getElementById('bd-final');
             if (bdFinal) bdFinal.scrollTop = bdFinal.scrollHeight;
@@ -1282,7 +1309,7 @@
           finalMarkdown = data.content;
           currentFinalBuf = finalMarkdown;
           const finalEl = document.getElementById('md-para-final');
-          if (finalEl) finalEl.innerHTML = marked.parse(finalMarkdown);
+          if (finalEl) { finalEl.innerHTML = marked.parse(finalMarkdown); renderMermaid(); }
         },
         done: () => {
           setDone('draft');
