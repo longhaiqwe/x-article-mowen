@@ -1,6 +1,8 @@
 import { chromium } from 'playwright';
 import type { Page } from 'playwright';
 import TurndownService from 'turndown';
+import { Readability } from '@mozilla/readability';
+import { JSDOM } from 'jsdom';
 
 export interface ScrapedResult {
     title: string;
@@ -33,7 +35,7 @@ export class XScraper {
     }
 
     /**
-     * Extracts text content from a specific X article page 
+     * Extracts text content from a specific URL
      */
     public async scrapeArticle(url: string, isHeadless: boolean = true): Promise<ScrapedResult> {
         const browser = await chromium.launch({ headless: isHeadless });
@@ -50,298 +52,241 @@ export class XScraper {
             console.log(`Navigating to ${url}...`);
             await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
 
-            // Need to wait for article content to load
             console.log('Waiting for content to render...');
-            // Wait for typical tweet content div or article text block, or fallback
-            // for non-X articles that might use main or body.
-            try {
-                await page.waitForSelector('article, main, body', { state: 'attached', timeout: 30000 });
-            } catch (e) {
-                console.log('Timeout waiting for specific content selector, proceeding anyway...');
-            }
 
-            // Extract the DOM content for the specific article.
-            // Note: X DOM is notoriously obscure. We rely on the `[data-testid="tweetText"]` 
-            // and `[data-testid="tweet"]` usually used for tweets.
-            // For long "Articles", the DOM might use different test ids like `[data-testid="article"]`.
+            const isXArticle = url.includes('x.com/') || url.includes('twitter.com/');
 
-            // Attempt to get the main article block or the first tweet content
-            let articleElement = await page.$('article') ||
-                await page.$('main') ||
-                await page.$('.entry') ||
-                await page.$('.post') ||
-                await page.$('.content') ||
-                await page.$('body');
-            let rawHtml = '';
-            let preParsedMarkdown = '';  // set by tweetText DOM path, skips Turndown
+            let markdownContent = '';
             let title = '';
-            try {
-                title = await page.title();
-            } catch (e) {
-                title = 'X Article';
-            }
 
-            if (articleElement) {
-                // Remove unwanted UI elements from the DOM before turndown parsing
-                await articleElement.evaluate((el: HTMLElement) => {
-                    // Remove elements that look like action bars or view counts (X specific)
-                    // and also generic noise elements: scripts, styles, footers, headers, navigations
-                    const toRemove = el.querySelectorAll(`
-                        [role="group"], [aria-label*="View"], [aria-label*="Reply"], [aria-label*="Like"], [aria-label*="Repost"],
-                        script, style, noscript, footer, header, nav, aside, 
-                        .sidebar, #sidebar, .widget, .comments, #comments
-                    `);
-                    toRemove.forEach(n => n.remove());
-                });
-
-                // Extract the title from h1
+            if (isXArticle) {
+                // Wait for typical tweet content div or article text block, or fallback
                 try {
-                    const h1 = await articleElement.$('h1');
-                    if (h1) {
-                        const h1Text = await h1.innerText();
-                        if (h1Text) {
-                            title = h1Text.trim();
-                            // Remove the h1 from the body so it isn't duplicated
-                            await h1.evaluate(node => node.remove());
-                        }
-                    } else if (!title || title === 'X Article') {
-                        // try global h1 if article doesn't have it
-                        const globalH1 = await page.$('h1');
-                        if (globalH1) {
-                            const h1Text = await globalH1.innerText();
-                            if (h1Text) title = h1Text.trim();
-                        }
-                    }
+                    await page.waitForSelector('article, main, body', { state: 'attached', timeout: 30000 });
                 } catch (e) {
-                    console.log('Error extracting title', e);
+                    console.log('Timeout waiting for specific content selector, proceeding anyway...');
                 }
 
-                // Custom in-browser DOM → Markdown converter for tweetText.
-                // Using Turndown caused inline <a> elements to be orphaned into
-                // separate paragraphs when X wraps them in block-level containers.
-                // We solve this by walking the DOM directly in the browser context.
-                const tweetMarkdowns = await articleElement.$$eval(
-                    '[data-testid="tweetText"]',
-                    (nodes) => nodes.map((root) => {
-                        /**
-                         * Recursively converts a DOM subtree to inline markdown.
-                         * Inside a tweetText block, ALL elements are treated as inline —
-                         * X renders each text fragment and link inside block-level <div>/<span>,
-                         * but semantically they belong to one continuous paragraph.
-                         * Only <br> creates a newline (paragraph break).
-                         */
-                        function domToMd(el: Node): string {
-                            if (el.nodeType === Node.TEXT_NODE) {
-                                return el.textContent || '';
+                let articleElement = await page.$('article') ||
+                    await page.$('main') ||
+                    await page.$('.entry') ||
+                    await page.$('.post') ||
+                    await page.$('.content') ||
+                    await page.$('body');
+                let rawHtml = '';
+                let preParsedMarkdown = '';
+
+                try {
+                    title = await page.title();
+                } catch (e) {
+                    title = 'X Article';
+                }
+
+                if (articleElement) {
+                    await articleElement.evaluate((el: HTMLElement) => {
+                        const toRemove = el.querySelectorAll(`
+                            [role="group"], [aria-label*="View"], [aria-label*="Reply"], [aria-label*="Like"], [aria-label*="Repost"],
+                            script, style, noscript, footer, header, nav, aside, 
+                            .sidebar, #sidebar, .widget, .comments, #comments
+                        `);
+                        toRemove.forEach(n => n.remove());
+                    });
+
+                    try {
+                        const h1 = await articleElement.$('h1');
+                        if (h1) {
+                            const h1Text = await h1.innerText();
+                            if (h1Text) {
+                                title = h1Text.trim();
+                                await h1.evaluate(node => node.remove());
                             }
-                            if (el.nodeType !== Node.ELEMENT_NODE) return '';
+                        } else if (!title || title === 'X Article') {
+                            const globalH1 = await page.$('h1');
+                            if (globalH1) {
+                                const h1Text = await globalH1.innerText();
+                                if (h1Text) title = h1Text.trim();
+                            }
+                        }
+                    } catch (e) {
+                        console.log('Error extracting title', e);
+                    }
 
-                            const elem = el as Element;
-                            const tag = elem.tagName.toLowerCase();
+                    const tweetMarkdowns = await articleElement.$$eval(
+                        '[data-testid="tweetText"]',
+                        (nodes) => nodes.map((root) => {
+                            function domToMd(el: Node): string {
+                                if (el.nodeType === Node.TEXT_NODE) return el.textContent || '';
+                                if (el.nodeType !== Node.ELEMENT_NODE) return '';
 
-                            // Skip unwanted tags
-                            if (['script', 'style', 'svg'].includes(tag)) return '';
+                                const elem = el as Element;
+                                const tag = elem.tagName.toLowerCase();
 
-                            // <br> → paragraph break
-                            if (tag === 'br') return '\n\n';
-
-                            // <img> → markdown image
-                            if (tag === 'img') {
-                                const src = (elem as HTMLImageElement).src;
-                                const alt = elem.getAttribute('alt') || '';
-                                if (src && src.includes('pbs.twimg.com/media')) {
-                                    return `\n\n![${alt}](${src})\n\n`;
+                                if (['script', 'style', 'svg'].includes(tag)) return '';
+                                if (tag === 'br') return '\n\n';
+                                if (tag === 'img') {
+                                    const src = (elem as HTMLImageElement).src;
+                                    const alt = elem.getAttribute('alt') || '';
+                                    if (src && src.includes('pbs.twimg.com/media')) return `\n\n![${alt}](${src})\n\n`;
+                                    if (src && src.includes('emoji')) return alt;
+                                    return '';
                                 }
-                                if (src && src.includes('emoji')) return alt; // emoji images → text
-                                return '';
-                            }
-
-                            // <a> → [text](href), always inline
-                            if (tag === 'a') {
-                                const href = elem.getAttribute('data-expanded-url')
-                                    || elem.getAttribute('href') || '';
-                                const text = Array.from(elem.childNodes).map(n => domToMd(n)).join('').trim();
-                                if (!text) return '';
-                                if (!href || href === text) return text;
-                                return `[${text}](${href})`;
-                            }
-
-                            // <strong>/<b> → **bold**
-                            if (tag === 'strong' || tag === 'b') {
-                                const inner = Array.from(elem.childNodes).map(n => domToMd(n)).join('');
-                                return inner ? `**${inner}**` : '';
-                            }
-
-                            // <em>/<i> → *italic*
-                            if (tag === 'em' || tag === 'i') {
-                                const inner = Array.from(elem.childNodes).map(n => domToMd(n)).join('');
-                                return inner ? `*${inner}*` : '';
-                            }
-
-                            // Headings h1-h6 → # Heading
-                            if (/^h[1-6]$/.test(tag)) {
-                                const level = parseInt(tag[1] || '1', 10);
-                                const prefix = '#'.repeat(level);
-                                const inner = Array.from(elem.childNodes).map(n => domToMd(n)).join('').trim();
-                                return inner ? `\n\n${prefix} ${inner}\n\n` : '';
-                            }
-
-                            // blockquote → > Quote
-                            if (tag === 'blockquote') {
-                                const inner = Array.from(elem.childNodes).map(n => domToMd(n)).join('').trim();
-                                if (!inner) return '';
-                                // Prefix each line with '> '
-                                const quoted = inner.split('\n').map(line => `> ${line}`).join('\n');
-                                return `\n\n${quoted}\n\n`;
-                            }
-
-                            // <ul>/<ol> → lists
-                            if (tag === 'ul' || tag === 'ol') {
-                                const inner = Array.from(elem.childNodes).map(n => domToMd(n)).join('\n');
-                                return inner ? `\n\n${inner}\n\n` : '';
-                            }
-
-                            // <li> → list item
-                            if (tag === 'li') {
-                                const parent = elem.parentElement;
-                                const isOrdered = parent && parent.tagName.toLowerCase() === 'ol';
-                                const inner = Array.from(elem.childNodes).map(n => domToMd(n)).join('').trim();
-                                if (!inner) return '';
-
-                                if (isOrdered) {
-                                    // Basic ordered list (numbers might not be 100% accurate without index counting, 
-                                    // but markdown parser will auto-correct 1. 1. 1. to 1. 2. 3.)
-                                    return `1. ${inner}`;
-                                } else {
+                                if (tag === 'a') {
+                                    const href = elem.getAttribute('data-expanded-url') || elem.getAttribute('href') || '';
+                                    const text = Array.from(elem.childNodes).map(n => domToMd(n)).join('').trim();
+                                    if (!text) return '';
+                                    if (!href || href === text) return text;
+                                    return `[${text}](${href})`;
+                                }
+                                if (tag === 'strong' || tag === 'b') {
+                                    const inner = Array.from(elem.childNodes).map(n => domToMd(n)).join('');
+                                    return inner ? `**${inner}**` : '';
+                                }
+                                if (tag === 'em' || tag === 'i') {
+                                    const inner = Array.from(elem.childNodes).map(n => domToMd(n)).join('');
+                                    return inner ? `*${inner}*` : '';
+                                }
+                                if (/^h[1-6]$/.test(tag)) {
+                                    const level = parseInt(tag[1] || '1', 10);
+                                    const prefix = '#'.repeat(level);
+                                    const inner = Array.from(elem.childNodes).map(n => domToMd(n)).join('').trim();
+                                    return inner ? `\n\n${prefix} ${inner}\n\n` : '';
+                                }
+                                if (tag === 'blockquote') {
+                                    const inner = Array.from(elem.childNodes).map(n => domToMd(n)).join('').trim();
+                                    if (!inner) return '';
+                                    const quoted = inner.split('\n').map(line => `> ${line}`).join('\n');
+                                    return `\n\n${quoted}\n\n`;
+                                }
+                                if (tag === 'ul' || tag === 'ol') {
+                                    const inner = Array.from(elem.childNodes).map(n => domToMd(n)).join('\n');
+                                    return inner ? `\n\n${inner}\n\n` : '';
+                                }
+                                if (tag === 'li') {
+                                    const parent = elem.parentElement;
+                                    const isOrdered = parent && parent.tagName.toLowerCase() === 'ol';
+                                    const inner = Array.from(elem.childNodes).map(n => domToMd(n)).join('').trim();
+                                    if (!inner) return '';
+                                    if (isOrdered) return `1. ${inner}`;
                                     return `* ${inner}`;
                                 }
+                                if (tag === 'p') {
+                                    const inner = Array.from(elem.childNodes).map(n => domToMd(n)).join('');
+                                    return inner ? `\n\n${inner}\n\n` : '';
+                                }
+                                return Array.from(elem.childNodes).map(n => domToMd(n)).join('');
                             }
 
-                            // <p> → paragraph
-                            if (tag === 'p') {
-                                const inner = Array.from(elem.childNodes).map(n => domToMd(n)).join('');
-                                return inner ? `\n\n${inner}\n\n` : '';
-                            }
+                            return domToMd(root as Node).replace(/\n{3,}/g, '\n\n').trim();
+                        })
+                    );
 
-                            // All other tags (div, span, etc.): recurse, treat as inline
-                            return Array.from(elem.childNodes).map(n => domToMd(n)).join('');
-                        }
+                    if (tweetMarkdowns.length > 0) {
+                        preParsedMarkdown = tweetMarkdowns.join('\n\n');
+                    } else {
+                        rawHtml = await articleElement.innerHTML() || '';
+                    }
+                }
 
-                        const md = domToMd(root as Node)
-                            .replace(/\n{3,}/g, '\n\n')
-                            .trim();
-                        return md;
-                    })
+                const turndownService = new TurndownService({
+                    headingStyle: 'atx',
+                    codeBlockStyle: 'fenced'
+                });
+
+                turndownService.addRule('xImages', {
+                    filter: 'img',
+                    replacement: function (content, node: any) {
+                        const src = node.getAttribute('src');
+                        const alt = node.getAttribute('alt') || '';
+                        if (src && src.includes('pbs.twimg.com/media')) return `\n\n![${alt}](${src})\n\n`;
+                        if (src && src.includes('profile_images')) return '';
+                        return `![${alt}](${src || ''})`;
+                    }
+                });
+
+                turndownService.addRule('xLinks', {
+                    filter: 'a',
+                    replacement: function (content, node: any) {
+                        const text = content.trim();
+                        if (!text) return '';
+                        const href = node.getAttribute('data-expanded-url') || node.getAttribute('href') || '';
+                        if (!href || href === text) return text;
+                        return `[${text}](${href})`;
+                    }
+                });
+
+                markdownContent = preParsedMarkdown || (rawHtml ? turndownService.turndown(rawHtml) : '');
+                markdownContent = markdownContent.replace(/\n{3,}/g, '\n\n').trim();
+                markdownContent = markdownContent.replace(/Want to publish your own Article\?\s*\n+Upgrade to Premium\s*/gi, '');
+                markdownContent = markdownContent.replace(/[^\n]*\n+\[[^\]]*\]\([^)]*\/i\/premium_sign_up[^)]*\)\s*/gi, '');
+                markdownContent = markdownContent.replace(/[\d,.]+[KMB]?\s*\n+Views\s*/gi, '');
+                markdownContent = markdownContent.replace(/Read \d+ repl(?:y|ies)\s*/gi, '');
+                markdownContent = markdownContent.replace(/\n{3,}/g, '\n\n').trim();
+
+                for (let pass = 0; pass < 3; pass++) {
+                    markdownContent = markdownContent.replace(/^(.+[,.])\n\n(\[.+?\]\(.+?\))\n\n([a-z])/gm, '$1 $2 $3');
+                    markdownContent = markdownContent.replace(/^(> .+[,.])\n>\s*\n(> \[.+?\]\(.+?\))\n>\s*\n(> [a-z])/gm, (_, before, link, after) => `${before} ${link.replace(/^> /, '')} ${after.replace(/^> /, '')}`);
+                    markdownContent = markdownContent.replace(/^(> .+[,.])\n>\s*\n(> \S[^\n]{0,60})\n>\s*\n(> [a-z])/gm, (_, before, middle, after) => `${before} ${middle.replace(/^> /, '')} ${after.replace(/^> /, '')}`);
+                    markdownContent = markdownContent.replace(/^(.+\S)\n\n(\[[^\]\n]+\]\([^)\n]+\))\n\n([a-z])/gm, '$1 $2 $3');
+                    markdownContent = markdownContent.replace(/^(> .+\S)\n>\s*\n(> \S[^\n]{0,40})\n>\s*$/gm, (_, before, fragment) => `${before} ${fragment.replace(/^> /, '')}`);
+                }
+            } else {
+                // Not an X article, fallback to Mozilla Readability
+                console.log('Using Readability for non-X article...');
+
+                await page.waitForTimeout(2000); // Give CSR apps some time to render
+
+                try {
+                    title = await page.title();
+                } catch (e) {
+                    title = 'Web Article';
+                }
+
+                const html = await page.content();
+                const dom = new JSDOM(html, { url });
+                const document = dom.window.document;
+
+                const noiseElements = document.querySelectorAll(
+                    'nav, footer, aside, .sidebar, [class*="sidebar"], [class*="share"], [class*="newsletter"], [class*="subscribe"], [class*="related"], [class*="cta"], [class*="author-box"], [class*="metadata"], [class*="post-meta"], form, .w-dyn-list, .w-dyn-empty, .w-slider, [class*="carousel"]'
                 );
+                noiseElements.forEach(el => el.remove());
 
-                if (tweetMarkdowns.length > 0) {
-                    // Already have markdown — skip Turndown entirely
-                    preParsedMarkdown = tweetMarkdowns.join('\n\n');
+                // Aggressively remove lists that represent Metadata blocks (like Claude blog)
+                document.querySelectorAll('ul, ol, div').forEach(el => {
+                    if (el.tagName === 'DIV' && el.children.length > 0) return; // only target text-heavy or lists
+                    const text = el.textContent || '';
+                    if (text.includes('Category') && text.includes('Reading time')) {
+                        el.remove();
+                    }
+                });
+
+                const reader = new Readability(document);
+                const article = reader.parse();
+
+                if (article && article.content) {
+                    if (article.title) title = article.title;
+                    const turndownService = new TurndownService({
+                        headingStyle: 'atx',
+                        codeBlockStyle: 'fenced'
+                    });
+                    markdownContent = turndownService.turndown(article.content);
+
+                    // Claude-specific and generic blog noise cleanup
+                    markdownContent = markdownContent.replace(/\*\s*Category[\s\S]*?Copy link\S*[\s\S]*?https:\/\/\S+/gi, '');
+                    markdownContent = markdownContent.replace(/## Transform how your organization[\s\S]*$/gi, '');
+                    markdownContent = markdownContent.replace(/Get the developer newsletter[\s\S]*?later\./gi, '');
+                    markdownContent = markdownContent.replace(/0\/5\s*\n*\s*eBook[\s\S]*$/gi, '');
+                    markdownContent = markdownContent.replace(/!\[.*?\]\(.*?placeholder\.svg\)/gi, '');
+
+                    markdownContent = markdownContent.replace(/\n{3,}/g, '\n\n').trim();
                 } else {
-                    rawHtml = await articleElement.innerHTML() || '';
+                    console.log('Readability failed, falling back to basic extraction...');
+                    let rawHtml = await page.$eval('body', el => el.innerHTML).catch(() => html);
+                    const turndownService = new TurndownService({
+                        headingStyle: 'atx',
+                        codeBlockStyle: 'fenced'
+                    });
+                    markdownContent = turndownService.turndown(rawHtml);
                 }
-            }
-
-            const turndownService = new TurndownService({
-                headingStyle: 'atx',
-                codeBlockStyle: 'fenced'
-            });
-
-            // Custom rule to handle X images better
-            turndownService.addRule('xImages', {
-                filter: 'img',
-                replacement: function (content, node: any) {
-                    const src = node.getAttribute('src');
-                    const alt = node.getAttribute('alt') || '';
-                    if (src && src.includes('pbs.twimg.com/media')) {
-                        return `\n\n![${alt}](${src})\n\n`;
-                    }
-                    if (src && src.includes('profile_images')) {
-                        return '';
-                    }
-                    return `![${alt}](${src || ''})`;
-                }
-            });
-
-            turndownService.addRule('xLinks', {
-                filter: 'a',
-                replacement: function (content, node: any) {
-                    const text = content.trim();
-                    if (!text) return '';
-                    // X uses data-expanded-url for the real URL (t.co is the short link)
-                    const href = node.getAttribute('data-expanded-url') || node.getAttribute('href') || '';
-                    if (!href || href === text) return text;
-                    return `[${text}](${href})`;
-                }
-            });
-
-            // Use DOM-parsed markdown if available (tweetText path), otherwise Turndown.
-            let markdownContent = preParsedMarkdown || (rawHtml ? turndownService.turndown(rawHtml) : '');
-
-            // Clean up excessive newlines
-            markdownContent = markdownContent.replace(/\n{3,}/g, '\n\n').trim();
-
-            // Remove X article UI noise patterns
-            // 1. Upgrade prompt (English plain text)
-            markdownContent = markdownContent.replace(/Want to publish your own Article\?\s*\n+Upgrade to Premium\s*/gi, '');
-            // 1b. Upgrade prompt (any language, when upgrade button is rendered as a link to /i/premium_sign_up)
-            //     Matches: optional preceding line (the "want to publish?" text) + the upgrade link line
-            markdownContent = markdownContent.replace(/[^\n]*\n+\[[^\]]*\]\([^)]*\/i\/premium_sign_up[^)]*\)\s*/gi, '');
-            // 2. View count (e.g. "3.1M\n\nViews" or "396K\n\nViews")
-            markdownContent = markdownContent.replace(/[\d,.]+[KMB]?\s*\n+Views\s*/gi, '');
-            // 4. Reply count (e.g. "Read 396 replies")
-            markdownContent = markdownContent.replace(/Read \d+ repl(?:y|ies)\s*/gi, '');
-
-            // Final cleanup after removals
-            markdownContent = markdownContent.replace(/\n{3,}/g, '\n\n').trim();
-
-            // Fix: orphaned inline text/links that Turndown split into separate paragraphs.
-            // X wraps inline elements in block-level <div>/<span>, causing Turndown to
-            // treat them as separate paragraphs. We merge them back together.
-            // Handles both plain paragraphs and blockquote-prefixed lines (> ...).
-            // Run multiple passes to catch consecutive orphaned fragments.
-            for (let pass = 0; pass < 3; pass++) {
-                // Pattern: line ending with comma/period/text, then a short standalone line
-                // (link or lowercase text), then a continuation line starting lowercase.
-                // Works with or without blockquote prefix.
-                // Merge orphaned short line between two text lines (plain text)
-                markdownContent = markdownContent.replace(
-                    /^(.+[,.])\n\n(\[.+?\]\(.+?\))\n\n([a-z])/gm,
-                    '$1 $2 $3'
-                );
-                // Same for blockquote lines: > text,\n> \n> [link]\n> \n> continuation
-                markdownContent = markdownContent.replace(
-                    /^(> .+[,.])\n>\s*\n(> \[.+?\]\(.+?\))\n>\s*\n(> [a-z])/gm,
-                    (_, before, link, after) => {
-                        // Remove the "> " prefix from link and after, merge inline
-                        const linkText = link.replace(/^> /, '');
-                        const afterText = after.replace(/^> /, '');
-                        return `${before} ${linkText} ${afterText}`;
-                    }
-                );
-                // Merge orphaned short plain-text line (no link, just words like "read it here")
-                // between blockquote lines
-                markdownContent = markdownContent.replace(
-                    /^(> .+[,.])\n>\s*\n(> \S[^\n]{0,60})\n>\s*\n(> [a-z])/gm,
-                    (_, before, middle, after) => {
-                        const midText = middle.replace(/^> /, '');
-                        const afterText = after.replace(/^> /, '');
-                        return `${before} ${midText} ${afterText}`;
-                    }
-                );
-                // Merge orphaned link/text in plain paragraphs
-                markdownContent = markdownContent.replace(
-                    /^(.+\S)\n\n(\[[^\]\n]+\]\([^)\n]+\))\n\n([a-z])/gm,
-                    '$1 $2 $3'
-                );
-                // Merge standalone short word(s) that got separated (e.g., "work.AI")
-                markdownContent = markdownContent.replace(
-                    /^(> .+\S)\n>\s*\n(> \S[^\n]{0,40})\n>\s*$/gm,
-                    (_, before, fragment) => {
-                        const fragText = fragment.replace(/^> /, '');
-                        return `${before} ${fragText}`;
-                    }
-                );
             }
 
             return {
