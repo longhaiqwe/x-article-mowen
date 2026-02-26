@@ -18,6 +18,7 @@ model TranslationRecord {
   status            String   @default("PENDING") // PENDING, EXTRACTING, TRANSLATING, COMPLETED, FAILED
   originalContent   String?
   translatedContent String?
+  draftContent      String?
   errorMessage      String?
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt

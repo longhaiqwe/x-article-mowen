@@ -344,6 +344,7 @@ const server = http.createServer(async (req, res) => {
                         title: data.title !== undefined ? data.title : undefined,
                         originalContent: data.originalContent !== undefined ? data.originalContent : undefined,
                         translatedContent: data.translatedContent !== undefined ? data.translatedContent : undefined,
+                        draftContent: data.draftContent !== undefined ? data.draftContent : undefined,
                         status: data.status !== undefined ? data.status : undefined,
                         errorMessage: data.errorMessage !== undefined ? data.errorMessage : undefined
                     }
@@ -355,6 +356,7 @@ const server = http.createServer(async (req, res) => {
                         title: data.title,
                         originalContent: data.originalContent,
                         translatedContent: data.translatedContent,
+                        draftContent: data.draftContent,
                         status: data.status || 'PENDING',
                         errorMessage: data.errorMessage
                     }

@@ -809,6 +809,7 @@
       line-height: 1.4;
       display: -webkit-box;
       -webkit-line-clamp: 2;
+      line-clamp: 2;
       -webkit-box-orient: vertical;
       overflow: hidden;
     }
@@ -1058,6 +1059,7 @@
       articleTitle = r.title || 'X Article';
       originalMarkdown = r.originalContent || '';
       finalMarkdown = r.translatedContent || '';
+      draftMarkdown = r.draftContent || '';
 
       document.getElementById('pipeline').style.display = 'flex';
 
@@ -1077,7 +1079,11 @@
         setDone('draft');
         setBtnDone('btn-para');
         fillPanel('final', finalMarkdown, finalMarkdown.length);
-        document.getElementById('bd-draft').innerHTML = '<div class="placeholder"><div class="placeholder-text">Loaded from history database.</div></div>';
+        if (draftMarkdown) {
+          fillPanel('draft', draftMarkdown, draftMarkdown.length);
+        } else {
+          document.getElementById('bd-draft').innerHTML = '<div class="placeholder"><div class="placeholder-text">Loaded from history database.</div></div>';
+        }
         setReady('btn-publishing');
       } else {
         setReady('btn-para');
@@ -1287,7 +1293,7 @@
             progressEl.textContent = '处理完成';
             progressEl.style.color = 'var(--sage)';
           }
-          saveHistory({ url: currentUrl, translatedContent: finalMarkdown, status: 'COMPLETED' });
+          saveHistory({ url: currentUrl, translatedContent: finalMarkdown, draftContent: currentParaBuf, status: 'COMPLETED' });
         },
         error: (err) => {
           showResult(false, 'PARAGRAPH TRANSLATE ERROR', err.message);
