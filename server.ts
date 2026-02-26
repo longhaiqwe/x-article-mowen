@@ -17,12 +17,9 @@ const X_COOKIE = process.env.X_COOKIE || '';
 const ARK_API_KEY = process.env.ARK_API_KEY || '';
 const ARK_BASE_URL = process.env.ARK_BASE_URL || 'https://ark.cn-beijing.volces.com/api/v3';
 const ARK_MODELS: ModelConfig = {
-    draft: process.env.ARK_MODEL_DRAFT || 'doubao-seed-translation-250915',
-    reviewFluency: process.env.ARK_MODEL_REVIEW_FLUENCY || 'glm-4-7-251222',
-    reviewAccuracy: process.env.ARK_MODEL_REVIEW_ACCURACY || 'deepseek-v3-2-251201',
-    reviewStyle: process.env.ARK_MODEL_REVIEW_STYLE || 'kimi-k2-thinking-251104',
-    synthesis: process.env.ARK_MODEL_SYNTHESIS || 'deepseek-v3-2-251201',
-    final: process.env.ARK_MODEL_FINAL || 'doubao-seed-1-6-251015',
+    literal: process.env.ARK_MODEL_LITERAL || 'doubao-seed-2-0-mini-260215',
+    issues: process.env.ARK_MODEL_ISSUES || 'doubao-seed-2-0-pro-260215',
+    freeTranslation: process.env.ARK_MODEL_FREE_TRANSLATION || 'doubao-seed-2-0-lite-260215',
 };
 const MOWEN_API_KEY = process.env.MOWEN_API_KEY || '';
 const MOWEN_SPACE_ID = process.env.MOWEN_SPACE_ID || '';
@@ -71,90 +68,6 @@ async function handleScrape(url: string, res: http.ServerResponse) {
         sendEvent(res, 'done', { message: '抓取完成' });
     } catch (e) {
         sendEvent(res, 'error', { message: `抓取失败：${(e as Error).message}` });
-    } finally {
-        res.end();
-    }
-}
-
-// ── Step 2: Draft ──────────────────────────────────────────────
-async function handleDraft(markdown: string, res: http.ServerResponse) {
-    initSSE(res);
-    try {
-        sendEvent(res, 'status', { message: '开始初步改写...' });
-        const translator = new Translator(ARK_API_KEY, ARK_BASE_URL, ARK_MODELS);
-
-        const draft = await translator.draftTranslate(
-            markdown,
-            (chunk) => sendEvent(res, `stage_chunk`, { stage: 'draft', chunk })
-        );
-        sendEvent(res, 'stage_complete', { stage: 'draft', content: draft });
-        sendEvent(res, 'done', { message: '初步改写完成' });
-    } catch (e) {
-        sendEvent(res, 'error', { message: `初步改写失败：${(e as Error).message}` });
-    } finally {
-        res.end();
-    }
-}
-
-// ── Step 3: Review ─────────────────────────────────────────────
-async function handleReview(original: string, draft: string, res: http.ServerResponse) {
-    initSSE(res);
-    try {
-        sendEvent(res, 'status', { message: '开始并行评审...' });
-        const translator = new Translator(ARK_API_KEY, ARK_BASE_URL, ARK_MODELS);
-
-        const [fluency, accuracy, style] = await Promise.all([
-            translator.reviewFluency(original, draft, (c) => sendEvent(res, 'stage_chunk', { stage: 'review_fluency', chunk: c })),
-            translator.reviewAccuracy(original, draft, (c) => sendEvent(res, 'stage_chunk', { stage: 'review_accuracy', chunk: c })),
-            translator.reviewStyle(original, draft, (c) => sendEvent(res, 'stage_chunk', { stage: 'review_style', chunk: c }))
-        ]);
-
-        sendEvent(res, 'stage_complete', { stage: 'reviews', content: { fluency, accuracy, style } });
-        sendEvent(res, 'done', { message: '评审完毕' });
-    } catch (e) {
-        sendEvent(res, 'error', { message: `评审失败：${(e as Error).message}` });
-    } finally {
-        res.end();
-    }
-}
-
-// ── Step 4: Synthesis ──────────────────────────────────────────
-async function handleSynthesis(original: string, draft: string, reviews: { fluency: string; accuracy: string; style: string }, res: http.ServerResponse) {
-    initSSE(res);
-    try {
-        sendEvent(res, 'status', { message: '开始综合改写...' });
-        const translator = new Translator(ARK_API_KEY, ARK_BASE_URL, ARK_MODELS);
-
-        const synth = await translator.synthesizeReviews(
-            original,
-            draft,
-            reviews,
-            (c) => sendEvent(res, 'stage_chunk', { stage: 'synthesis', chunk: c })
-        );
-        sendEvent(res, 'stage_complete', { stage: 'synthesis', content: synth });
-        sendEvent(res, 'done', { message: '综合改写完成' });
-    } catch (e) {
-        sendEvent(res, 'error', { message: `综合处理失败：${(e as Error).message}` });
-    } finally {
-        res.end();
-    }
-}
-
-// ── Step 5: Final Polish ───────────────────────────────────────
-async function handleFinalPolish(synth: string, res: http.ServerResponse) {
-    initSSE(res);
-    try {
-        sendEvent(res, 'status', { message: '开始最终润色...' });
-        const translator = new Translator(ARK_API_KEY, ARK_BASE_URL, ARK_MODELS);
-
-        const finalContent = await translator.finalPolish(
-            synth,
-            (c) => sendEvent(res, 'stage_chunk', { stage: 'final', chunk: c })
-        );
-        sendEvent(res, 'stage_complete', { stage: 'final', content: finalContent });
-        sendEvent(res, 'done', { message: '最终润色完成' });
-    } catch (e) {
-        sendEvent(res, 'error', { message: `润色失败：${(e as Error).message}` });
     } finally {
         res.end();
     }
@@ -235,42 +148,6 @@ const server = http.createServer(async (req, res) => {
         const articleUrl = parsedUrl.searchParams.get('url');
         if (!articleUrl) { res.writeHead(400); res.end(JSON.stringify({ error: 'Missing url' })); return; }
         await handleScrape(articleUrl, res);
-        return;
-    }
-
-    // Step 2: POST /process/draft
-    if (pathname === '/process/draft' && req.method === 'POST') {
-        const body = await readBody(req);
-        const { markdown } = JSON.parse(body);
-        if (!markdown) { res.writeHead(400); res.end(JSON.stringify({ error: 'Missing markdown' })); return; }
-        await handleDraft(markdown, res);
-        return;
-    }
-
-    // Step 3: POST /process/review
-    if (pathname === '/process/review' && req.method === 'POST') {
-        const body = await readBody(req);
-        const { original, draft } = JSON.parse(body);
-        if (!original || !draft) { res.writeHead(400); res.end(JSON.stringify({ error: 'Missing original or draft' })); return; }
-        await handleReview(original, draft, res);
-        return;
-    }
-
-    // Step 4: POST /process/synthesis
-    if (pathname === '/process/synthesis' && req.method === 'POST') {
-        const body = await readBody(req);
-        const { original, draft, reviews } = JSON.parse(body);
-        if (!original || !draft || !reviews) { res.writeHead(400); res.end(JSON.stringify({ error: 'Missing specific params' })); return; }
-        await handleSynthesis(original, draft, reviews, res);
-        return;
-    }
-
-    // Step 5: POST /process/final
-    if (pathname === '/process/final' && req.method === 'POST') {
-        const body = await readBody(req);
-        const { synthesis } = JSON.parse(body);
-        if (!synthesis) { res.writeHead(400); res.end(JSON.stringify({ error: 'Missing synthesis payload' })); return; }
-        await handleFinalPolish(synthesis, res);
         return;
     }
 

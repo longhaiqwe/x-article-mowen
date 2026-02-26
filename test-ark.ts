@@ -5,7 +5,7 @@ dotenv.config();
 
 const apiKey = process.env.ARK_API_KEY || '';
 const baseURL = process.env.ARK_BASE_URL || '';
-const model = process.env.ARK_MODEL_DRAFT || '';
+const model = process.env.ARK_MODEL_LITERAL || 'doubao-seed-2-0-mini-260215';
 
 console.log(`Testing API connection...`);
 console.log(`  Base URL: ${baseURL}`);
