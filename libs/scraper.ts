@@ -278,6 +278,14 @@ export class XScraper {
                     markdownContent = markdownContent.replace(/!\[.*?\]\(.*?placeholder\.svg\)/gi, '');
 
                     markdownContent = markdownContent.replace(/\n{3,}/g, '\n\n').trim();
+
+                    if (article.title && !markdownContent.startsWith('# ')) {
+                        let header = `# ${article.title}\n\n`;
+                        if (article.excerpt) {
+                            header += `> ${article.excerpt}\n\n`;
+                        }
+                        markdownContent = header + markdownContent;
+                    }
                 } else {
                     console.log('Readability failed, falling back to basic extraction...');
                     let rawHtml = await page.$eval('body', el => el.innerHTML).catch(() => html);
