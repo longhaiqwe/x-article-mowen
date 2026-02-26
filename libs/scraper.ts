@@ -279,12 +279,14 @@ export class XScraper {
 
                     markdownContent = markdownContent.replace(/\n{3,}/g, '\n\n').trim();
 
-                    if (article.title && !markdownContent.startsWith('# ')) {
-                        let header = `# ${article.title}\n\n`;
-                        if (article.excerpt) {
-                            header += `> ${article.excerpt}\n\n`;
+                    if (article.title) {
+                        const titleSnippet = article.title.replace(/\|.*$/, '').replace(/-.*$/, '').trim().toLowerCase();
+                        const mdSnippet = markdownContent.substring(0, 300).toLowerCase();
+                        // Only inject the title if it isn't already present at the top of the body
+                        // or if the content doesn't already start with a markdown header
+                        if (titleSnippet && !mdSnippet.includes(titleSnippet) && !markdownContent.startsWith('# ')) {
+                            markdownContent = `# ${article.title}\n\n` + markdownContent;
                         }
-                        markdownContent = header + markdownContent;
                     }
                 } else {
                     console.log('Readability failed, falling back to basic extraction...');
