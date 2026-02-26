@@ -1258,9 +1258,8 @@
 
       let currentParaBuf = '';
       let currentFinalBuf = '';
-      const selectedBackend = 'ollama';
 
-      listenSSE('/process/paragraph-translate', { markdown: originalMarkdown, backend: selectedBackend }, {
+      listenSSE('/process/paragraph-translate', { markdown: originalMarkdown }, {
         paragraph_start: (data) => {
           const { index, total } = data;
           const progressEl = document.getElementById('draft-progress');

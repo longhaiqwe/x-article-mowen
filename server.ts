@@ -154,23 +154,19 @@ const server = http.createServer(async (req, res) => {
     // Step 5.5: POST /process/paragraph-translate
     if (pathname === '/process/paragraph-translate' && req.method === 'POST') {
         const body = await readBody(req);
-        const { markdown, backend } = JSON.parse(body);
+        const { markdown } = JSON.parse(body);
         if (!markdown) { res.writeHead(400); res.end(JSON.stringify({ error: 'Missing markdown payload' })); return; }
 
         initSSE(res);
         try {
-            sendEvent(res, 'status', { message: `开始逐段分析与翻译 (${backend === 'ollama' ? '本地 Ollama' : '云端模型'})...` });
+            const isLocal = ARK_MODELS.literal === 'ollama';
+            sendEvent(res, 'status', { message: `开始逐段分析与翻译 (${isLocal ? '本地 Ollama' : '云端模型'})...` });
 
-            // 我们只需要传标记即可，Translator 的实现会通过第四个参数将首步直译重发给 Ollama，
-            // 而保留问题分析、意译和修饰发往默认大模型 (Volcengine/DeepSeek)。
             let activeTranslator = new Translator(ARK_API_KEY, ARK_BASE_URL, ARK_MODELS);
-            // 为了简单直接，我们可以把 backend 标记传进 translator (或者在这里修改 translator)
-            // 修改 Translator 以支持局部切本地模型
             const result = await activeTranslator.translateByParagraphs(
                 markdown,
                 (event, data) => sendEvent(res, event, data),
-                (index, step, chunk) => sendEvent(res, 'paragraph_chunk', { index, step, chunk }),
-                backend === 'ollama' ? 'hf.co/mradermacher/translategemma-4b-it-GGUF' : undefined // 如果有需要本地的就在这个参数传
+                (index, step, chunk) => sendEvent(res, 'paragraph_chunk', { index, step, chunk })
             );
 
             sendEvent(res, 'stage_complete', { stage: 'paragraph_translate', content: result.finalArticle });

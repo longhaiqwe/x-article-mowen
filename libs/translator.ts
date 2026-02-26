@@ -83,8 +83,7 @@ export class Translator {
      */
     public async translateParagraph(
         paragraph: string,
-        onChunk?: (chunk: string) => void,
-        localDraftModel?: string
+        onChunk?: (chunk: string) => void
     ): Promise<{ literal: string; issues: string; freeTranslation: string }> {
         const commonRules = `规则：
 - 翻译时要准确传达原文的事实和背景。
@@ -115,14 +114,14 @@ export class Translator {
         onChunk?.('### 直译\n');
 
         let literal = '';
-        if (localDraftModel) {
+        if (this.models.literal === 'ollama') {
             // 使用临时内联的客户端请求本地 Ollama
             const localOllama = new OpenAI({
                 apiKey: 'ollama',
                 baseURL: 'http://127.0.0.1:11434/v1',
             });
             const stream = await localOllama.chat.completions.create({
-                model: localDraftModel,
+                model: 'hf.co/mradermacher/translategemma-4b-it-GGUF',
                 stream: true,
                 messages: [
                     { role: 'system', content: step1System },
@@ -171,8 +170,7 @@ export class Translator {
     public async translateByParagraphs(
         content: string,
         onProgress?: ParagraphProgressCallback,
-        onChunk?: ParagraphChunkCallback,
-        localDraftModel?: string
+        onChunk?: ParagraphChunkCallback
     ): Promise<ParagraphTranslationResult> {
         // 先按双换行拆分出基本段落
         const originalParagraphs = content.split(/\n\n+/).filter(p => p.trim().length > 0);
@@ -217,7 +215,7 @@ export class Translator {
                 onChunk?.(i, currentStep, chunk);
             };
 
-            const parsed = await this.translateParagraph(paragraph, chunkTracker, localDraftModel);
+            const parsed = await this.translateParagraph(paragraph, chunkTracker);
 
             const result: ParagraphResult = {
                 index: i,
