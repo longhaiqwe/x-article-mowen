@@ -376,11 +376,17 @@ const server = http.createServer(async (req, res) => {
 server.listen(PORT, () => {
     console.log(`\n🚀 X Article → Mowen 可视化服务已启动`);
     console.log(`📡 访问地址: http://localhost:${PORT}\n`);
-    console.log('📋 调试模式：步骤可单独手动触发');
-    console.log('   GET  /scrape?url=...   → Step 1 抓取原文');
-    console.log('   POST /process/draft    → Step 2 初稿');
-    console.log('   POST /process/review   → Step 3 并行评审');
-    console.log('   POST /process/synthesis→ Step 4 综合改写');
-    console.log('   POST /process/final    → Step 5 润色');
-    console.log('   POST /publish          → Step 3 提取信息发布\n');
+    console.log('📋 接口与调试路由模式：');
+    console.log('   == 核心流程 (全新逐段精磨) ==');
+    console.log('   GET  /scrape?url=...                → Step 1 抓取原文');
+    console.log('   POST /process/paragraph-translate   → Step 2 逐段精细处理');
+    console.log('   POST /publish                       → Step 3 提取信息并发布\n');
+    console.log('   == 数据记录管理 ==');
+    console.log('   GET  /api/history                   → 获取所有历史记录');
+    console.log('   POST /api/history                   → 新增或更新历史记录\n');
+    console.log('   == 遗留流程 (全文多轮模式) ==');
+    console.log('   POST /process/draft                 → (旧流程) 提取初稿');
+    console.log('   POST /process/review                → (旧流程) 多维度评审');
+    console.log('   POST /process/synthesis             → (旧流程) 综合改写');
+    console.log('   POST /process/final                 → (旧流程) 最终润色\n');
 });
